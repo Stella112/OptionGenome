@@ -246,11 +246,26 @@ class AlpacaMCP:
     def get_open_orders(self) -> Any:
         return self._invoke("get_open_orders")
 
+    # Parameter names below are transcribed from the connected server's own tool
+    # schemas (docs/mcp-schemas.txt, regenerate with scripts/mcp_schemas.py), not
+    # from memory. Passing `underlying` instead of `underlying_symbol` left the
+    # URL template unsubstituted and Alpaca rejected the literal placeholder.
+
     def get_option_chain(self, underlying: str, **params: Any) -> Any:
-        return self._invoke("get_option_chain", underlying=underlying, **params)
+        """Option chain for one underlying.
 
-    def get_quote(self, symbol: str, **params: Any) -> Any:
-        return self._invoke("get_quote", symbol=symbol, **params)
+        Accepts the server's filters, notably expiration_date_gte /
+        expiration_date_lte and type, so the DTE window can be narrowed at the
+        source rather than pulling the whole chain.
+        """
+        return self._invoke("get_option_chain", underlying_symbol=underlying, **params)
 
-    def get_bars(self, symbol: str, **params: Any) -> Any:
-        return self._invoke("get_bars", symbol=symbol, **params)
+    def get_quote(self, symbol: str | Sequence[str], **params: Any) -> Any:
+        """Latest quote(s). The tool takes `symbols` and accepts several at once."""
+        symbols = symbol if isinstance(symbol, str) else ",".join(symbol)
+        return self._invoke("get_quote", symbols=symbols, **params)
+
+    def get_bars(self, symbol: str | Sequence[str], **params: Any) -> Any:
+        """Historical bars. `symbols` is required; timeframe/days are optional."""
+        symbols = symbol if isinstance(symbol, str) else ",".join(symbol)
+        return self._invoke("get_bars", symbols=symbols, **params)
