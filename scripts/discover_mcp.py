@@ -29,7 +29,10 @@ from src.broker.alpaca_mcp import (  # noqa: E402
 )
 
 MCP_SERVER_DIR = Path(os.getenv("ALPACA_MCP_DIR", "/opt/alpaca-mcp-server"))
-MCP_PYTHON = MCP_SERVER_DIR / ".venv" / "bin" / "python"
+#: The packaged console script, not `python -m`. pyproject declares
+#: alpaca-mcp-server = "alpaca_mcp_server.cli:main", and the cli module is what
+#: wires up transport and env handling.
+MCP_COMMAND = MCP_SERVER_DIR / ".venv" / "bin" / "alpaca-mcp-server"
 
 
 async def list_tools() -> list[str]:
@@ -41,8 +44,8 @@ async def list_tools() -> list[str]:
     env.setdefault("ALPACA_PAPER_TRADE", "true")
 
     params = StdioServerParameters(
-        command=str(MCP_PYTHON),
-        args=["-m", "alpaca_mcp_server.server"],
+        command=str(MCP_COMMAND),
+        args=["--transport", "stdio"],
         env=env,
         cwd=str(MCP_SERVER_DIR),
     )
@@ -58,8 +61,8 @@ def main() -> int:
     if not os.getenv("ALPACA_API_KEY") or not os.getenv("ALPACA_SECRET_KEY"):
         print("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set", file=sys.stderr)
         return 2
-    if not MCP_PYTHON.exists():
-        print(f"MCP server interpreter not found at {MCP_PYTHON}", file=sys.stderr)
+    if not MCP_COMMAND.exists():
+        print(f"MCP server command not found at {MCP_COMMAND}", file=sys.stderr)
         return 2
 
     # A live-trading server must never be the one we discover against.
@@ -69,8 +72,10 @@ def main() -> int:
 
     try:
         tools = asyncio.run(list_tools())
-    except Exception as exc:
+    except BaseException as exc:
         print(f"discovery failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+        for sub in getattr(exc, "exceptions", ()):  # ExceptionGroup hides the cause
+            print(f"  cause: {type(sub).__name__}: {sub}", file=sys.stderr)
         return 1
 
     print(f"server advertises {len(tools)} tools")
