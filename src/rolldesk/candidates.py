@@ -38,6 +38,16 @@ MAX_LEG_RELATIVE_SPREAD = 0.35
 #: Two candidates whose short strikes and width both match are duplicates.
 MAX_CANDIDATES_DEFAULT = 3
 
+#: Build from the furthest eligible expiry rather than the richest one.
+#:
+#: Set at the operator's instruction on 2026-09-01: positions are to be held
+#: through the results announcement, not resolved inside the submission window.
+#: Ranking purely by credit-to-width favours near-dated expiries (a live run
+#: produced Sept 9 and Sept 10 candidates when Sept 18 was the intent), so the
+#: builder walks expiries from longest to shortest and stops at the first that
+#: yields viable structures. Set to False to restore richest-first behaviour.
+PREFER_LONGEST_EXPIRY = True
+
 
 @dataclass(frozen=True)
 class ChainContract:
@@ -320,6 +330,7 @@ def generate_candidates(
     today: date,
     now: datetime,
     limit: int = MAX_CANDIDATES_DEFAULT,
+    prefer_longest_expiry: bool = PREFER_LONGEST_EXPIRY,
 ) -> list[Ticket]:
     """Produce a diverse, structurally valid shortlist for the current permission.
 
@@ -330,18 +341,32 @@ def generate_candidates(
     if not permission.allowed_strategies or permission.max_lots < 1:
         return []
 
-    tickets: list[Ticket] = []
-    for expiry in eligible_expiries(chain, config, today):
-        if StructureType.PUT_CREDIT_SPREAD.value in permission.allowed_strategies:
-            tickets += build_put_credit_spreads(chain, expiry, permission.regime, today, now)
-        if StructureType.IRON_CONDOR.value in permission.allowed_strategies:
-            tickets += build_iron_condors(chain, expiry, permission.regime, today, now)
+    expiries = eligible_expiries(chain, config, today)
+    if prefer_longest_expiry:
+        # Longest first, and stop at the first expiry that actually yields
+        # tradeable structures, so a thin far-dated ladder cannot strand the desk.
+        expiries = sorted(expiries, reverse=True)
 
-    # Only keep what clears the regime's own credit floor, so the shortlist is
-    # not padded with tickets the Risk Officer will certainly deny.
-    viable = [
-        t
-        for t in tickets
-        if t.width > 0 and (t.credit_mid / t.width) >= config.min_credit_to_width
-    ]
-    return _diversify(viable, limit)
+    def viable_for(chosen: Sequence[date]) -> list[Ticket]:
+        tickets: list[Ticket] = []
+        for expiry in chosen:
+            if StructureType.PUT_CREDIT_SPREAD.value in permission.allowed_strategies:
+                tickets += build_put_credit_spreads(chain, expiry, permission.regime, today, now)
+            if StructureType.IRON_CONDOR.value in permission.allowed_strategies:
+                tickets += build_iron_condors(chain, expiry, permission.regime, today, now)
+        # Only keep what clears the regime's own credit floor, so the shortlist
+        # is not padded with tickets the Risk Officer will certainly deny.
+        return [
+            t
+            for t in tickets
+            if t.width > 0 and (t.credit_mid / t.width) >= config.min_credit_to_width
+        ]
+
+    if prefer_longest_expiry:
+        for expiry in expiries:
+            found = viable_for([expiry])
+            if found:
+                return _diversify(found, limit)
+        return []
+
+    return _diversify(viable_for(expiries), limit)

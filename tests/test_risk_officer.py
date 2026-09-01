@@ -286,17 +286,42 @@ def test_deny_on_stale_quotes(allow_case):
     assert reasons_containing(decision, "quote_stale")
 
 
-def test_deny_on_future_dated_quote(allow_case):
+def test_deny_on_a_grossly_future_dated_quote(allow_case):
     legs = pcs_legs()
-    quotes = quotes_for(legs)
     forward = {
         s: Quote(q.symbol, q.bid, q.ask, q.ts + timedelta(seconds=30))
-        for s, q in quotes.items()
+        for s, q in quotes_for(legs).items()
     }
     allow_case["book"] = make_book(legs, quotes=forward)
     decision = evaluate(**allow_case)
     assert not decision.allowed
     assert reasons_containing(decision, "quote_timestamp_in_future")
+
+
+def test_small_clock_skew_is_tolerated(allow_case):
+    """Alpaca stamps quotes on its own clock; ~50ms ahead is skew, not an anomaly.
+
+    Rejecting any future timestamp denied every ticket on a live run.
+    """
+    legs = pcs_legs()
+    skewed = {
+        s: Quote(q.symbol, q.bid, q.ask, q.ts + timedelta(milliseconds=49))
+        for s, q in quotes_for(legs).items()
+    }
+    allow_case["book"] = make_book(legs, quotes=skewed)
+    assert evaluate(**allow_case).allowed
+
+
+def test_skew_allowance_has_a_hard_edge(allow_case):
+    from src.risk.officer import MAX_CLOCK_SKEW_MS
+
+    legs = pcs_legs()
+    beyond = {
+        s: Quote(q.symbol, q.bid, q.ask, q.ts + timedelta(milliseconds=MAX_CLOCK_SKEW_MS + 500))
+        for s, q in quotes_for(legs).items()
+    }
+    allow_case["book"] = make_book(legs, quotes=beyond)
+    assert not evaluate(**allow_case).allowed
 
 
 # --- check 10: DTE window ----------------------------------------------------

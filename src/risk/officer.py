@@ -43,6 +43,16 @@ ADJACENT_EXPIRY_DAYS = 7
 #: Tight enough to catch a wrong number, loose enough to survive float noise.
 CLAIM_TOLERANCE = 0.01
 
+#: How far ahead of our clock a broker quote timestamp may sit before it is
+#: treated as anomalous rather than as clock skew.
+#:
+#: Alpaca stamps quotes on its own clock, which drifts from ours by tens of
+#: milliseconds. Rejecting ANY future timestamp denied every ticket on a live
+#: run ("quote_timestamp_in_future:-49ms") and would have blocked trading for
+#: the whole session. A genuinely future-dated quote is still refused; a quote
+#: 49ms ahead is just two clocks disagreeing.
+MAX_CLOCK_SKEW_MS = 2000.0
+
 
 @dataclass
 class _Recalc:
@@ -229,8 +239,11 @@ def _check_9_quote_age(config: Config, rc: _Recalc, reasons: list[str]) -> None:
     if rc.max_quote_age_ms is None:
         reasons.append("quote_age_not_verifiable")
         return
-    if rc.max_quote_age_ms < 0:
-        reasons.append(f"quote_timestamp_in_future:{rc.max_quote_age_ms:.0f}ms")
+    if rc.max_quote_age_ms < -MAX_CLOCK_SKEW_MS:
+        reasons.append(
+            f"quote_timestamp_in_future:{rc.max_quote_age_ms:.0f}ms"
+            f"_beyond_{MAX_CLOCK_SKEW_MS:.0f}ms_skew_allowance"
+        )
         return
     if rc.max_quote_age_ms >= config.max_quote_age_ms:
         reasons.append(f"quote_stale:{rc.max_quote_age_ms:.0f}ms>={config.max_quote_age_ms}ms")

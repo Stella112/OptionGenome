@@ -260,3 +260,39 @@ def test_candidates_survive_the_risk_officer(chain, config):
 
     verdicts = [evaluate(t, book, account, income(), config) for t in tickets]
     assert any(v.allowed for v in verdicts), [v.reasons for v in verdicts]
+
+
+# --- expiry preference (operator decision, 2026-09-01) -----------------------
+
+
+def test_candidates_come_from_the_furthest_eligible_expiry(config):
+    """Positions are held through the results announcement, so duration wins."""
+    chain = []
+    for days in (3, 9, 17):
+        chain += synthetic_chain(TODAY + timedelta(days=days))
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert tickets
+    assert {t.expiry for t in tickets} == {(TODAY + timedelta(days=17)).isoformat()}
+
+
+def test_richest_first_still_available(config):
+    """The old behaviour remains one flag away."""
+    chain = []
+    for days in (3, 17):
+        chain += synthetic_chain(TODAY + timedelta(days=days))
+    tickets = generate_candidates(
+        chain, income(), config, TODAY, NOW, prefer_longest_expiry=False
+    )
+    assert tickets
+
+
+def test_a_barren_far_expiry_falls_back_to_a_nearer_one(config):
+    """A thin far-dated ladder must not strand the desk with no candidates."""
+    near = synthetic_chain(TODAY + timedelta(days=4))
+    far = [
+        ChainContract(c.symbol, c.underlying, c.expiry, c.strike, c.right, 0.0, c.ask, c.ts, c.delta)
+        for c in synthetic_chain(TODAY + timedelta(days=17))
+    ]
+    tickets = generate_candidates(near + far, income(), config, TODAY, NOW)
+    assert tickets
+    assert {t.expiry for t in tickets} == {(TODAY + timedelta(days=4)).isoformat()}
