@@ -81,7 +81,9 @@ def test_only_expiries_inside_the_openable_window_are_used(config):
         chain += synthetic_chain(TODAY + timedelta(days=days))
     eligible = eligible_expiries(chain, config, TODAY)
     offsets = sorted((e - TODAY).days for e in eligible)
-    assert offsets == [2, 4, 7]  # 0 and 1 are in the flatten zone; 8 and 20 too far
+    expected = [d for d in (0, 1, 2, 4, 7, 8, 20) if config.min_entry_dte <= d <= config.max_entry_dte]
+    assert offsets == expected
+    assert 0 not in offsets and 1 not in offsets  # the flatten zone is never openable
 
 
 def test_forced_flatten_zone_expiries_are_excluded(config):

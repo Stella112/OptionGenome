@@ -16,12 +16,12 @@ capital moves at all.
 
 ## Strategy, in one sentence
 
-Open 1-lot defined-risk put credit spreads and iron condors on SPY at 2-7 DTE
+Open 1-lot defined-risk put credit spreads and iron condors on SPY at 2-18 DTE
 during INCOME and COMPRESSION regimes, take profit at 50% of credit, and
 mandatorily flatten at or below 1 DTE rather than carry a position into
 expiration or settlement.
 
-The effective entry window is **2-7 DTE**: `entry_dte` is `[1, 7]` and
+The effective entry window is **2-18 DTE**: `entry_dte` is `[1, 18]` and
 `force_flatten_dte` is `1`, and the Risk Officer enforces both `entry_dte[0] <=
 dte <= entry_dte[1]` **and** `dte > force_flatten_dte`.
 

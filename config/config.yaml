@@ -7,7 +7,17 @@ underlyings:
 # Entry window. Note the interaction with force_flatten_dte below: spec section 28
 # check 10 requires BOTH entry_dte[0] <= dte <= entry_dte[1] AND dte > force_flatten_dte,
 # so the effective openable window is 2-7 DTE. Encoded literally, not collapsed.
-entry_dte: [1, 7]
+# CHANGED from [1, 7] -> [1, 18] on 2026-09-01 at the operator's explicit
+# instruction: hold positions through the results announcement rather than
+# resolving them inside the submission window.
+#
+# The trade-off was stated and accepted. Short-dated entries realise P&L before
+# judging; an 18-DTE structure is still open at judging and shows mark-to-market
+# instead. Sept 18 is the monthly expiry (586 SPY contracts vs 54 on Sept 14),
+# so it is also the most liquid strike ladder in that range.
+#
+# To restore the original short-dated behaviour, set this back to [1, 7].
+entry_dte: [1, 18]
 force_flatten_dte: 1
 
 max_loss_pct: 0.0075

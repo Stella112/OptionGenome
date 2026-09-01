@@ -26,7 +26,7 @@ def write_config(tmp_path, **overrides):
 
 def test_shipped_config_matches_the_frozen_spec(config):
     assert config.underlyings == ("SPY",)
-    assert config.entry_dte == (1, 7)
+    assert config.entry_dte == (1, 18)  # widened by operator decision; see config.yaml
     assert config.force_flatten_dte == 1
     assert config.max_loss_pct == 0.0075
     assert config.daily_new_risk_pct == 0.02
@@ -49,10 +49,11 @@ def test_qqq_is_not_enabled_yet(config):
     assert "QQQ" not in config.underlyings
 
 
-def test_effective_entry_window_is_two_to_seven(config):
-    """entry_dte [1,7] with force_flatten_dte 1 leaves 2-7 actually openable."""
+def test_effective_entry_window_excludes_the_flatten_zone(config):
+    """force_flatten_dte 1 lifts the floor above entry_dte[0], whatever it is."""
+    assert config.min_entry_dte == max(config.entry_dte[0], config.force_flatten_dte + 1)
     assert config.min_entry_dte == 2
-    assert config.max_entry_dte == 7
+    assert config.max_entry_dte == config.entry_dte[1]
 
 
 def test_blocked_regimes_are_pinned_to_zero_lots(config):
