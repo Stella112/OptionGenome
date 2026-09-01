@@ -35,14 +35,54 @@ class MCPUnavailable(RuntimeError):
 #: fragments that have historically carried them. Matching is by fragment
 #: against the DISCOVERED list -- this is a search hint, never an assumption
 #: that any particular name exists.
+#: Verbs that identify a tool as MUTATING. A read capability may never map to
+#: one of these, whatever its name looks like.
+#:
+#: This guard exists because substring matching is not safe here: "order" is a
+#: substring of both `get_orders` and `place_stock_order`, and an earlier version
+#: of this module mapped the read capability `get_open_orders` onto
+#: `place_stock_order`. Reading the order book would have submitted an order.
+WRITE_VERBS: tuple[str, ...] = (
+    "place_",
+    "submit_",
+    "cancel_",
+    "close_",
+    "replace_",
+    "delete_",
+    "create_",
+    "update_",
+    "add_",
+    "remove_",
+    "exercise_",
+    "do_not_exercise",
+    "liquidate",
+)
+
+
+def is_write_tool(name: str) -> bool:
+    """True when a tool name indicates it mutates broker state."""
+    lowered = name.lower()
+    return any(verb in lowered for verb in WRITE_VERBS)
+
+
+#: Ordered preference per capability: exact tool names first, most specific
+#: first. Substring fragments are a last resort, and are still write-guarded.
+#:
+#: `get_quote` deliberately prefers OPTION quotes: this desk trades option
+#: spreads, so a stock quote is the wrong instrument, not merely a worse match.
 REQUIRED_CAPABILITIES: dict[str, tuple[str, ...]] = {
-    "get_clock": ("clock", "market_clock", "market_status"),
-    "get_account": ("account",),
-    "get_positions": ("position",),
-    "get_open_orders": ("order",),
-    "get_option_chain": ("option_chain", "optionchain", "chain", "option_snapshot"),
-    "get_quote": ("quote", "latest_quote", "snapshot"),
-    "get_bars": ("bar", "historical_bars", "stock_bars"),
+    "get_clock": ("get_clock", "get_market_clock", "clock"),
+    "get_account": ("get_account_info", "get_account", "account"),
+    "get_positions": ("get_all_positions", "get_positions", "position"),
+    "get_open_orders": ("get_orders", "list_orders", "get_open_orders"),
+    "get_option_chain": ("get_option_chain", "get_option_contracts", "option_chain"),
+    "get_quote": (
+        "get_option_latest_quote",
+        "get_option_snapshot",
+        "get_latest_quote",
+        "get_stock_latest_quote",
+    ),
+    "get_bars": ("get_stock_bars", "get_bars", "stock_bars", "bar"),
 }
 
 
@@ -100,13 +140,22 @@ def discover_capabilities(
             t for t in normalised if any(ts.lower() in t.name.lower() for ts in toolsets_filter)
         ]
 
+    # Every required capability is READ-ONLY, so mutating tools are removed from
+    # consideration entirely rather than merely ranked lower.
+    readable = [t for t in normalised if not is_write_tool(t.name)]
+
     mapping: dict[str, str] = {}
     missing: list[str] = []
-    for capability, fragments in required.items():
-        match = next(
-            (t.name for fragment in fragments for t in normalised if t.matches(fragment)),
-            None,
-        )
+    for capability, candidates in required.items():
+        by_name = {t.name.lower(): t.name for t in readable}
+        # 1. exact tool name, in declared preference order
+        match = next((by_name[c.lower()] for c in candidates if c.lower() in by_name), None)
+        # 2. substring fallback, still restricted to non-mutating tools
+        if match is None:
+            match = next(
+                (t.name for fragment in candidates for t in readable if t.matches(fragment)),
+                None,
+            )
         if match is None:
             missing.append(capability)
         else:
