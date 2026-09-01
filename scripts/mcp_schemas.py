@@ -50,13 +50,14 @@ async def collect(wanted: set[str]) -> list[str]:
             for tool in (await session.list_tools()).tools:
                 if wanted and tool.name not in wanted:
                     continue
-                schema = tool.inputSchema or {}
+                # Client versions differ on the attribute name for this.
+                schema = getattr(tool, "input_schema", None) or getattr(tool, "inputSchema", None) or {}
                 required = schema.get("required") or []
                 props = list((schema.get("properties") or {}).keys())
                 lines.append(f"{tool.name}")
                 lines.append(f"    required : {required}")
                 lines.append(f"    accepts  : {props[:14]}")
-    return sorted(lines and lines or [])
+    return lines
 
 
 def _causes(exc: BaseException, depth: int = 0):
