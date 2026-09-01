@@ -141,6 +141,10 @@ def run_gate(
     def check_identity() -> str:
         if account_snapshot is None:
             raise RuntimeError("no account read through MCP; identity cannot be verified")
+        if "mode" not in state:
+            # check 6 failed, so there is no configured account to compare against.
+            # Report that plainly rather than cascading into a KeyError.
+            raise RuntimeError("execution mode is invalid; account identity cannot be checked")
         mode: ExecutionMode = state["mode"]
         mode.assert_account(str(account_snapshot.get("account_id", "")))
         return f"account {account_snapshot['account_id']} matches {mode.mode.value} mode"

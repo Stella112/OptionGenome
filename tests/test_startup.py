@@ -190,3 +190,12 @@ def test_a_single_failure_prevents_ready():
     result = gate()
     assert result.failures
     assert result.state is not SystemState.READY
+
+
+def test_identity_check_reports_cleanly_when_mode_is_invalid():
+    """A failed mode check must not cascade into a KeyError on the next check."""
+    result = gate({"MODE": "nonsense"})
+    identity = outcome(result, "account_identity")
+    assert not identity.passed
+    assert "KeyError" not in identity.detail
+    assert "execution mode is invalid" in identity.detail
