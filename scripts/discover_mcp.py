@@ -57,6 +57,17 @@ async def list_tools() -> list[str]:
             return [tool.name for tool in response.tools]
 
 
+def _causes(exc: BaseException, depth: int = 0):
+    """Recurse into ExceptionGroups; a nested group otherwise hides the real error."""
+    pad = "  " * (depth + 1)
+    subs = getattr(exc, "exceptions", ())
+    if not subs:
+        yield f"{pad}{type(exc).__name__}: {exc}"
+        return
+    for sub in subs:
+        yield from _causes(sub, depth + 1)
+
+
 def main() -> int:
     if not os.getenv("ALPACA_API_KEY") or not os.getenv("ALPACA_SECRET_KEY"):
         print("ALPACA_API_KEY and ALPACA_SECRET_KEY must be set", file=sys.stderr)
@@ -74,8 +85,8 @@ def main() -> int:
         tools = asyncio.run(list_tools())
     except BaseException as exc:
         print(f"discovery failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        for sub in getattr(exc, "exceptions", ()):  # ExceptionGroup hides the cause
-            print(f"  cause: {type(sub).__name__}: {sub}", file=sys.stderr)
+        for line in _causes(exc):  # ExceptionGroup nests; recurse to the real cause
+            print(f"  cause: {line.strip()}", file=sys.stderr)
         return 1
 
     print(f"server advertises {len(tools)} tools")

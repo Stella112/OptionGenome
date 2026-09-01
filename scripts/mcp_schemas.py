@@ -59,6 +59,17 @@ async def collect(wanted: set[str]) -> list[str]:
     return sorted(lines and lines or [])
 
 
+def _causes(exc: BaseException, depth: int = 0):
+    """Recurse into ExceptionGroups; a nested group otherwise hides the real error."""
+    pad = "  " * (depth + 1)
+    subs = getattr(exc, "exceptions", ())
+    if not subs:
+        yield f"{pad}{type(exc).__name__}: {exc}"
+        return
+    for sub in subs:
+        yield from _causes(sub, depth + 1)
+
+
 def main() -> int:
     _load_dotenv()
     wanted = set(sys.argv[1:]) or set(DEFAULT_TOOLS)
@@ -66,8 +77,8 @@ def main() -> int:
         lines = asyncio.run(collect(wanted))
     except BaseException as exc:
         print(f"failed: {type(exc).__name__}: {exc}", file=sys.stderr)
-        for sub in getattr(exc, "exceptions", ()):
-            print(f"  cause: {type(sub).__name__}: {sub}", file=sys.stderr)
+        for line in _causes(exc):
+            print(f"  cause: {line.strip()}", file=sys.stderr)
         return 1
 
     out = Path("docs/mcp-schemas.txt")
