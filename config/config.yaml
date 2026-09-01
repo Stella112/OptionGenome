@@ -1,0 +1,37 @@
+# FROZEN CONTEST CONFIGURATION - do not tune during the contest (spec section 13).
+# Every number the Risk Officer enforces lives here and nowhere else.
+
+underlyings:
+  - SPY            # QQQ is added only after SPY completes one clean full session
+
+# Entry window. Note the interaction with force_flatten_dte below: spec section 28
+# check 10 requires BOTH entry_dte[0] <= dte <= entry_dte[1] AND dte > force_flatten_dte,
+# so the effective openable window is 2-7 DTE. Encoded literally, not collapsed.
+entry_dte: [1, 7]
+force_flatten_dte: 1
+
+max_loss_pct: 0.0075
+daily_new_risk_pct: 0.02
+dd_flatten_pct: 0.05
+
+tp_frac_of_credit: 0.50
+defend_mult: 2.0
+
+max_lots: 1
+regime_max_lots:
+  INCOME: 1
+  COMPRESSION: 1
+  MOMENTUM: 0
+  EVENT: 0
+
+max_open_structures: 3
+
+min_credit_to_width: 0.15
+max_short_leg_spread_pct: 0.20
+max_quote_age_ms: 5000
+
+adx_trend_threshold: 25
+iv_rank_low: 30
+
+event_window_hours: 24
+final_session_minutes: 15

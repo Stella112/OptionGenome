@@ -1,0 +1,28 @@
+[
+  {
+    "name": "JOLTS",
+    "date": "2026-09-01",
+    "time_et": "10:00"
+  },
+  {
+    "name": "Metro Employment",
+    "date": "2026-09-02",
+    "time_et": "10:00"
+  },
+  {
+    "name": "Productivity",
+    "date": "2026-09-03",
+    "time_et": "08:30"
+  },
+  {
+    "name": "NFP",
+    "date": "2026-09-04",
+    "time_et": "08:30"
+  },
+  {
+    "name": "Labor Day",
+    "date": "2026-09-07",
+    "time_et": null,
+    "market_closed": true
+  }
+]

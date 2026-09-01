@@ -1,0 +1,7 @@
+PENDING - populate from the installed binary (spec section 4).
+Required captures:
+  alpaca doctor
+  alpaca --help-all
+  alpaca order submit --help
+  alpaca order submit --schema
+The installed CLI is the source of truth. No CLI argument may be written from memory.
