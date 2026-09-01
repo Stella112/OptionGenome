@@ -35,7 +35,11 @@ ACCOUNT = {
     "last_equity": "100000",
     "options_trading_level": 3,
 }
-CLOCK = {"is_open": True, "minutes_to_close": 180}
+CLOCK = {
+    "is_open": True,
+    "timestamp": "2026-09-01T14:00:00-04:00",
+    "next_close": "2026-09-01T16:00:00-04:00",
+}
 
 
 def fake_mcp(account=None, positions=None, clock=None):

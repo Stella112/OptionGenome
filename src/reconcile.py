@@ -17,6 +17,7 @@ from .broker.alpaca_mcp import AlpacaMCP
 from .broker.occ import OCCError, parse_option_symbol
 from .config import Config
 from .journal import Journal
+from .marketdata import market_clock
 from .types import Account, Book, OpenStructure, Quote, SystemState
 
 
@@ -29,6 +30,28 @@ def _as_float(value: Any, field: str) -> float:
         return float(value)
     except (TypeError, ValueError) as exc:
         raise ReconcileError(f"{field} is not numeric: {value!r}") from exc
+
+
+def as_list(payload: Any) -> list:
+    """Normalise a list-returning MCP payload.
+
+    Alpaca wraps collections as {"result": [...]}. Iterating that dict yields
+    its KEYS, which are strings, so downstream code that expects records fails
+    with an unhelpful AttributeError. Normalise once, here.
+    """
+    if payload is None:
+        return []
+    if isinstance(payload, list):
+        return payload
+    if isinstance(payload, Mapping):
+        for key in ("result", "positions", "orders", "data"):
+            inner = payload.get(key)
+            if isinstance(inner, list):
+                return inner
+        return []
+    # A bare string is an error message from the server, never a collection.
+    raise ReconcileError(f"expected a collection, got {type(payload).__name__}: {str(payload)[:200]}")
+
 
 
 def high_water_mark(
@@ -188,11 +211,12 @@ def reconcile(
         persisted_high_water=persisted_high_water,
     )
 
-    clock = mcp.get_clock() or {}
-    market_open = bool(clock.get("is_open", False))
-    minutes_to_close = int(clock.get("minutes_to_close", 0) or 0)
+    # The clock carries next_close, not a minutes remaining field. Reading a
+    # missing key as 0 would put every pass inside the final-session window and
+    # the Risk Officer would refuse every entry, silently.
+    market_open, minutes_to_close = market_clock(mcp)
 
-    structures = group_positions_into_structures(mcp.get_positions() or [])
+    structures = group_positions_into_structures(as_list(mcp.get_positions()))
     day_risk = journal.risk_opened_on(now.date())
 
     book = Book(

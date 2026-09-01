@@ -185,12 +185,20 @@ def market_clock(mcp: AlpacaMCP) -> tuple[bool, int]:
     if not isinstance(clock, Mapping):
         return False, 0
     is_open = bool(clock.get("is_open", False))
+    if not is_open:
+        return False, 0
 
-    minutes = 0
+    # Alpaca sends next_close plus a server timestamp; an explicit remaining
+    # minutes field is also accepted so callers can supply one directly.
+    explicit = clock.get("minutes_to_close")
+    if isinstance(explicit, (int, float)):
+        return True, max(0, int(explicit))
+
     close_raw = clock.get("next_close") or clock.get("close")
+    if not isinstance(close_raw, str):
+        return True, 0
+
+    close_at = _timestamp(close_raw)
     now_raw = clock.get("timestamp")
-    if is_open and isinstance(close_raw, str):
-        close_at = _timestamp(close_raw)
-        now = _timestamp(now_raw) if isinstance(now_raw, str) else datetime.now(timezone.utc)
-        minutes = max(0, int((close_at - now).total_seconds() // 60))
-    return is_open, minutes
+    now = _timestamp(now_raw) if isinstance(now_raw, str) else datetime.now(timezone.utc)
+    return True, max(0, int((close_at - now).total_seconds() // 60))

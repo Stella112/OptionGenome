@@ -251,3 +251,50 @@ def test_extract_preserves_a_non_json_error_message():
         content = [TextBlock()]
 
     assert _extract(Result()) == "rate limit exceeded"
+
+
+# --- collection and clock payload shapes -------------------------------------
+
+
+def test_result_wrapped_collections_are_normalised():
+    """Alpaca returns {"result": [...]}; iterating that dict yields its keys."""
+    from src.reconcile import as_list
+
+    assert as_list({"result": []}) == []
+    assert as_list({"result": [{"symbol": "SPY"}]}) == [{"symbol": "SPY"}]
+    assert as_list([{"symbol": "SPY"}]) == [{"symbol": "SPY"}]
+    assert as_list(None) == []
+
+
+def test_a_string_payload_is_an_error_not_a_collection():
+    from src.reconcile import ReconcileError, as_list
+
+    with pytest.raises(ReconcileError, match="expected a collection"):
+        as_list("Error calling tool 'get_all_positions': HTTP 500")
+
+
+def test_session_minutes_are_derived_from_next_close():
+    """Reading a missing minutes field as 0 would block every entry silently."""
+    from src.marketdata import market_clock
+
+    class FakeMCP:
+        def get_clock(self):
+            return {
+                "is_open": True,
+                "timestamp": "2026-09-01T14:55:56-04:00",
+                "next_close": "2026-09-01T16:00:00-04:00",
+            }
+
+    is_open, minutes = market_clock(FakeMCP())
+    assert is_open
+    assert minutes == 64
+
+
+def test_closed_market_reports_zero_minutes():
+    from src.marketdata import market_clock
+
+    class FakeMCP:
+        def get_clock(self):
+            return {"is_open": False, "next_close": "2026-09-02T16:00:00-04:00"}
+
+    assert market_clock(FakeMCP()) == (False, 0)
