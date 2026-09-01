@@ -1,0 +1,533 @@
+<title>OptionGenome</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,300;0,6..72,400;0,6..72,500;1,6..72,300&family=Archivo:wght@400;500;600&family=IBM+Plex+Mono:wght@400;500;600&display=swap">
+
+<style>
+  /* Light: ledger paper. Dark: ink. Both painted explicitly. */
+  :root {
+    --ground: #EDEFF2;
+    --panel: #F7F8FA;
+    --rule: #CFD5DE;
+    --ink: #161A22;
+    --ink-soft: #4A5262;
+    --ink-faint: #7B8494;
+    --brass: #9A6F24;
+    --allow: #2C6E52;
+    --deny: #A93D2A;
+    --allow-bg: rgba(44, 110, 82, .10);
+    --deny-bg: rgba(169, 61, 42, .09);
+    --shadow: 0 1px 2px rgba(22, 26, 34, .06), 0 8px 24px rgba(22, 26, 34, .05);
+
+    --display: "Newsreader", ui-serif, Georgia, serif;
+    --body: "Archivo", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, Consolas, monospace;
+
+    --gutter: clamp(20px, 5vw, 84px);
+    --measure: 62ch;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root:not([data-theme="light"]) {
+      --ground: #10141B;
+      --panel: #161B24;
+      --rule: #2A3240;
+      --ink: #E7EAF0;
+      --ink-soft: #A3ACBC;
+      --ink-faint: #6D7686;
+      --brass: #C9A055;
+      --allow: #5FBF92;
+      --deny: #E4735C;
+      --allow-bg: rgba(95, 191, 146, .12);
+      --deny-bg: rgba(228, 115, 92, .12);
+      --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+    }
+  }
+  :root[data-theme="dark"] {
+    --ground: #10141B;
+    --panel: #161B24;
+    --rule: #2A3240;
+    --ink: #E7EAF0;
+    --ink-soft: #A3ACBC;
+    --ink-faint: #6D7686;
+    --brass: #C9A055;
+    --allow: #5FBF92;
+    --deny: #E4735C;
+    --allow-bg: rgba(95, 191, 146, .12);
+    --deny-bg: rgba(228, 115, 92, .12);
+    --shadow: 0 1px 2px rgba(0, 0, 0, .4), 0 10px 30px rgba(0, 0, 0, .35);
+  }
+
+  * { box-sizing: border-box; }
+
+  body {
+    background: var(--ground);
+    color: var(--ink);
+    font-family: var(--body);
+    font-size: 16px;
+    line-height: 1.6;
+    -webkit-font-smoothing: antialiased;
+  }
+
+  html { scroll-snap-type: y proximity; scroll-behavior: smooth; }
+
+  .slide {
+    scroll-snap-align: start;
+    min-height: 100svh;
+    padding: clamp(48px, 8vh, 96px) var(--gutter) clamp(56px, 9vh, 104px);
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+    gap: clamp(20px, 3vh, 34px);
+    border-bottom: 1px solid var(--rule);
+    position: relative;
+  }
+
+  /* Persistent slide index &mdash; the deck is a sequence, so numbering is real. */
+  .slide::before {
+    content: attr(data-index);
+    position: absolute;
+    top: clamp(24px, 4vh, 44px);
+    right: var(--gutter);
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .1em;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+
+  .eyebrow {
+    font-family: var(--mono);
+    font-size: 11.5px;
+    font-weight: 600;
+    letter-spacing: .16em;
+    text-transform: uppercase;
+    color: var(--brass);
+    display: flex;
+    align-items: center;
+    gap: 12px;
+  }
+  .eyebrow::after {
+    content: "";
+    height: 1px;
+    flex: 1;
+    max-width: 140px;
+    background: var(--brass);
+    opacity: .35;
+  }
+
+  h1 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(44px, 8vw, 104px);
+    line-height: .95;
+    letter-spacing: -.022em;
+    margin: 0;
+    text-wrap: balance;
+  }
+  h2 {
+    font-family: var(--display);
+    font-weight: 400;
+    font-size: clamp(30px, 4.6vw, 56px);
+    line-height: 1.06;
+    letter-spacing: -.018em;
+    margin: 0;
+    max-width: 20ch;
+    text-wrap: balance;
+  }
+  h3 {
+    font-family: var(--body);
+    font-weight: 600;
+    font-size: 14px;
+    letter-spacing: .02em;
+    margin: 0 0 6px;
+  }
+  p { margin: 0; max-width: var(--measure); color: var(--ink-soft); }
+  p.lead {
+    font-family: var(--display);
+    font-size: clamp(19px, 2.3vw, 26px);
+    line-height: 1.45;
+    font-weight: 300;
+    color: var(--ink);
+    max-width: 34ch;
+  }
+  em { font-style: italic; color: var(--ink); }
+  strong { color: var(--ink); font-weight: 600; }
+
+  .cols {
+    display: grid;
+    gap: clamp(18px, 2.6vw, 34px);
+    grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+    align-items: start;
+  }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 20px 22px;
+    box-shadow: var(--shadow);
+  }
+  .card p { font-size: 14.5px; }
+
+  /* Data / journal blocks */
+  .term {
+    font-family: var(--mono);
+    font-size: clamp(11.5px, 1.15vw, 13.5px);
+    line-height: 1.85;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 18px 20px;
+    overflow-x: auto;
+    box-shadow: var(--shadow);
+  }
+  .term .deny { color: var(--deny); }
+  .term .allow { color: var(--allow); }
+  .term .dim { color: var(--ink-faint); }
+  .term .key { color: var(--brass); }
+
+  .stamp {
+    display: inline-block;
+    font-family: var(--mono);
+    font-size: 11px;
+    font-weight: 600;
+    letter-spacing: .12em;
+    padding: 3px 9px;
+    border-radius: 2px;
+    border: 1px solid currentColor;
+  }
+  .stamp.deny { color: var(--deny); background: var(--deny-bg); }
+  .stamp.allow { color: var(--allow); background: var(--allow-bg); }
+
+  /* Figures */
+  .figure { display: flex; align-items: baseline; gap: 14px; }
+  .figure .n {
+    font-family: var(--display);
+    font-size: clamp(46px, 7vw, 88px);
+    line-height: .9;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.03em;
+  }
+  .figure .n.deny { color: var(--deny); }
+  .figure .n.allow { color: var(--allow); }
+  .figure .cap { font-size: 14px; color: var(--ink-soft); max-width: 22ch; }
+
+  .stats {
+    display: grid;
+    gap: 1px;
+    grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+    background: var(--rule);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    overflow: hidden;
+  }
+  .stat { background: var(--panel); padding: 16px 18px; }
+  .stat .v {
+    font-family: var(--mono);
+    font-size: clamp(20px, 2.4vw, 27px);
+    font-weight: 500;
+    font-variant-numeric: tabular-nums;
+    letter-spacing: -.02em;
+  }
+  .stat .k {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    margin-top: 4px;
+  }
+
+  /* Pipeline */
+  .flow { display: flex; flex-wrap: wrap; align-items: stretch; gap: 10px; }
+  .node {
+    flex: 1 1 150px;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    border-radius: 3px;
+    padding: 14px 16px;
+    position: relative;
+  }
+  .node .t {
+    font-family: var(--mono);
+    font-size: 10.5px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--brass);
+    margin-bottom: 6px;
+  }
+  .node .d { font-size: 13.5px; color: var(--ink-soft); line-height: 1.45; }
+  .node.gate { border-color: var(--deny); }
+  .node.gate .t { color: var(--deny); }
+
+  ul.checks {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+    display: grid;
+    gap: 7px 24px;
+    grid-template-columns: repeat(auto-fit, minmax(215px, 1fr));
+    font-family: var(--mono);
+    font-size: 12.5px;
+    color: var(--ink-soft);
+  }
+  ul.checks li { display: flex; gap: 10px; align-items: baseline; }
+  ul.checks li::before {
+    content: "";
+    flex: none;
+    width: 11px;
+    height: 1px;
+    background: var(--brass);
+    transform: translateY(-4px);
+  }
+
+  .bug { border-left: 2px solid var(--deny); padding-left: 18px; }
+  .bug h3 { color: var(--deny); font-family: var(--mono); font-size: 12.5px; letter-spacing: .04em; }
+
+  .links { display: flex; flex-wrap: wrap; gap: 10px 28px; font-family: var(--mono); font-size: 13px; }
+  .links a { color: var(--brass); text-decoration: none; border-bottom: 1px solid currentColor; padding-bottom: 1px; }
+  .links a:hover, .links a:focus-visible { color: var(--ink); }
+  :focus-visible { outline: 2px solid var(--brass); outline-offset: 3px; }
+
+  .foot {
+    font-family: var(--mono);
+    font-size: 11px;
+    color: var(--ink-faint);
+    letter-spacing: .04em;
+  }
+
+  /* Progress rail */
+  .rail {
+    position: fixed;
+    left: 0; top: 0;
+    height: 2px;
+    background: var(--brass);
+    width: 0;
+    z-index: 10;
+    transition: width .12s linear;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .rail { transition: none; }
+    html { scroll-behavior: auto; }
+  }
+  @media (max-width: 640px) {
+    .slide { min-height: auto; padding-block: 56px; }
+    html { scroll-snap-type: none; }
+  }
+
+  @media print {
+    html { scroll-snap-type: none; }
+    body { background: #fff; color: #14181F; }
+    .rail { display: none; }
+    .slide {
+      min-height: auto;
+      page-break-after: always;
+      break-after: page;
+      border-bottom: none;
+      padding: 40px 44px;
+      justify-content: flex-start;
+    }
+    .card, .term, .stat, .node { box-shadow: none; }
+  }
+</style>
+
+<div class="rail" id="rail"></div>
+
+<div class="deck" id="deck">
+
+  <section class="slide" data-index="01">
+    <div class="eyebrow">Alpaca AI Trading Agents Hackathon</div>
+    <h1>OptionGenome</h1>
+    <p class="lead">An autonomous options desk where the model is the <em>least-trusted</em> component.</p>
+    <div class="stats">
+      <div class="stat"><div class="v">133</div><div class="k">decisions, day one</div></div>
+      <div class="stat"><div class="v" style="color:var(--deny)">130</div><div class="k">refused</div></div>
+      <div class="stat"><div class="v">614</div><div class="k">tests</div></div>
+      <div class="stat"><div class="v">72</div><div class="k">MCP tools</div></div>
+    </div>
+    <p class="foot">Alpaca paper trading &bull; account PA3Y88DE6VC4 &bull; simulated funds, real market data</p>
+  </section>
+
+  <section class="slide" data-index="02">
+    <div class="eyebrow">The premise</div>
+    <h2>Most agents ask one question. This one asks two.</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>What kind of market is this?</h3>
+        <p><strong>MarketDNA</strong> classifies the tape and emits permissions &mdash; never orders. Its only job is deciding what is <em>legal</em> right now.</p>
+      </div>
+      <div class="card">
+        <h3>What happens after a position is open?</h3>
+        <p><strong>Roll Desk</strong> builds the structure, then manages it to exit: take profit, defend, roll, flatten.</p>
+      </div>
+    </div>
+    <p>Between them sits a <strong>Risk Officer</strong> &mdash; the only component permitted to commit capital, and the one that trusts nothing it is handed.</p>
+  </section>
+
+  <section class="slide" data-index="03">
+    <div class="eyebrow">Architecture</div>
+    <h2>One direction of authority. No reverse path.</h2>
+    <div class="flow">
+      <div class="node"><div class="t">MarketDNA</div><div class="d">EMA, ADX(14), realized vol, IV rank, event calendar &rarr; a permission set</div></div>
+      <div class="node"><div class="t">Roll Desk</div><div class="d">Screens 2,500+ contracts, builds defined-risk candidates</div></div>
+      <div class="node"><div class="t">Featherless</div><div class="d">Qwen-2.5-72B ranks the shortlist and returns one ID</div></div>
+      <div class="node gate"><div class="t">Risk Officer</div><div class="d">15 deterministic checks. ALLOW or DENY. Exception means DENY</div></div>
+      <div class="node"><div class="t">Alpaca CLI</div><div class="d">Multi-leg order, limit, day. Never a market order</div></div>
+    </div>
+    <p>Every stage is journalled. No ALLOW means no broker command is ever constructed.</p>
+  </section>
+
+  <section class="slide" data-index="04">
+    <div class="eyebrow">The model</div>
+    <h2>It picks from a shortlist it cannot write.</h2>
+    <p>The model receives already-validated candidates and returns exactly one thing. It cannot create a strike, an expiry, a size or a limit. It never sees equity, buying power, or the risk rules &mdash; it doesn't need them, so it isn't given them.</p>
+    <div class="term">
+<span class="dim">// model output, treated as hostile input</span>
+{
+  <span class="key">"pick_id"</span>: "iro-efb7d21c92",
+  <span class="key">"rationale"</span>: "favorable credit-to-max-loss ratio",
+  <span class="deny">"lots"</span>: <span class="deny">500</span>,                  <span class="dim">&larr; ignored</span>
+  <span class="deny">"override_risk_officer"</span>: <span class="deny">true</span>,   <span class="dim">&larr; ignored</span>
+  <span class="deny">"max_loss"</span>: <span class="deny">0</span>                    <span class="dim">&larr; ignored</span>
+}
+    </div>
+    <p>Fences stripped, shape checked, <code>pick_id</code> verified against the supplied set. Any failure &mdash; bad JSON, unknown id, timeout &mdash; falls back to the first legal candidate and is journalled. <strong>35 adversarial tests</strong> cover that path.</p>
+  </section>
+
+  <section class="slide" data-index="05">
+    <div class="eyebrow">Risk gates</div>
+    <h2>The officer does not trust the ticket.</h2>
+    <p>Width, credit, maximum loss, DTE, structure type and every leg relationship are <strong>recalculated</strong> from OCC symbols and live quotes. A ticket claiming <code>max_loss: 1.0</code> does not get to buy itself past the cap.</p>
+    <ul class="checks">
+      <li>regime permits this structure</li>
+      <li>global defined-risk allow-list</li>
+      <li>max loss &le; 0.75% of equity</li>
+      <li>new risk &le; 2% per day</li>
+      <li>drawdown &lt; 5%</li>
+      <li>no overlapping short exposure</li>
+      <li>credit / width &ge; 0.15</li>
+      <li>short-leg spread quality</li>
+      <li>quote age &lt; 5s</li>
+      <li>DTE inside entry window</li>
+      <li>market open, not final 15 min</li>
+      <li>open structures &lt; 3</li>
+      <li>leg ratios reduce to GCD 1</li>
+      <li>account identity assertion</li>
+      <li>ticket internal consistency</li>
+    </ul>
+    <p>Pure: no network, no filesystem, no clock read. Every check runs &mdash; failures accumulate rather than short-circuit, so a refusal reports every reason at once.</p>
+  </section>
+
+  <section class="slide" data-index="06">
+    <div class="eyebrow">Evidence</div>
+    <h2>On day one it refused 130 of 133 decisions.</h2>
+    <div class="figure">
+      <div class="n deny">130</div>
+      <div class="cap">refusals, each with a machine-readable reason, in an append-only journal</div>
+    </div>
+    <div class="term">
+<span class="dim">19:44:19</span> <span class="stamp deny">DENY</span>  overlapping_short_adjacent_expiry:SPY:2026-09-04:gap=6d
+<span class="dim">19:44:19</span>        final_session_window:15m&lt;=15m
+<span class="dim">19:41:17</span> <span class="stamp deny">DENY</span>  overlapping_short_same_expiry:SPY:2026-09-18
+<span class="dim">19:15:14</span> <span class="stamp deny">DENY</span>  quote_stale:5210ms&gt;=5000ms
+<span class="dim">19:43:17</span> <span class="stamp allow">ALLOW</span> lots=1  iron_condor  SPY 2026-09-18
+    </div>
+    <p>Nobody stopped it. The Risk Officer did &mdash; and wrote down why. That journal is the deliverable, not a by-product.</p>
+  </section>
+
+  <section class="slide" data-index="07">
+    <div class="eyebrow">Alpaca infrastructure</div>
+    <h2>Reads and writes never share a door.</h2>
+    <div class="cols">
+      <div class="card">
+        <h3>MCP server &mdash; every read</h3>
+        <p>72 tools discovered at runtime and mapped to seven internal capabilities. No tool name is hardcoded; a missing capability halts at startup, not at trading time.</p>
+      </div>
+      <div class="card">
+        <h3>Alpaca CLI &mdash; every write</h3>
+        <p><code>order_class=mleg</code>, always limit, always day. Flags transcribed from the installed binary's captured output, never from memory.</p>
+      </div>
+    </div>
+    <p>A test walks the source tree and fails the build if anything imports a broker SDK or shells out elsewhere. The <code>--legs</code> wire format is undocumented in the captured help, so submission stayed locked until <code>--dry-run</code> proved the encoding against the real binary.</p>
+    <div class="stats">
+      <div class="stat"><div class="v">20</div><div class="k">startup checks</div></div>
+      <div class="stat"><div class="v">2</div><div class="k">permitted structures</div></div>
+      <div class="stat"><div class="v">1</div><div class="k">lot maximum</div></div>
+      <div class="stat"><div class="v">0.75%</div><div class="k">max loss per position</div></div>
+    </div>
+  </section>
+
+  <section class="slide" data-index="08">
+    <div class="eyebrow">What running it taught us</div>
+    <h2>Tests passed. Reality disagreed.</h2>
+    <div class="cols">
+      <div class="bug">
+        <h3>read mapped onto write</h3>
+        <p>Capability discovery matched <code>get_open_orders</code> to <code>place_stock_order</code> &mdash; "order" is a substring of both. Reading the order book would have <strong>placed an order</strong>.</p>
+      </div>
+      <div class="bug">
+        <h3>drawdown could never fire</h3>
+        <p>The high-water mark was seeded from <em>current</em> equity, making drawdown zero by definition. An account down 6% looked healthy.</p>
+      </div>
+      <div class="bug">
+        <h3>denied over 49 milliseconds</h3>
+        <p>Alpaca stamps quotes on its own clock. Any future timestamp read as an anomaly &mdash; which would have blocked trading for the entire competition.</p>
+      </div>
+    </div>
+    <p>Each is now a named constant with a regression test that explains why it exists. None was found by unit tests; all three needed a live broker.</p>
+  </section>
+
+  <section class="slide" data-index="09">
+    <div class="eyebrow">Status</div>
+    <h2>Running now, unattended.</h2>
+    <div class="stats">
+      <div class="stat"><div class="v">5,256</div><div class="k">lines of source</div></div>
+      <div class="stat"><div class="v">4,435</div><div class="k">lines of tests</div></div>
+      <div class="stat"><div class="v">614</div><div class="k">tests passing</div></div>
+      <div class="stat"><div class="v">685</div><div class="k">journal events</div></div>
+    </div>
+    <p>A systemd service on a VPS: starts on boot, restarts on failure, reconciles from the broker every pass rather than trusting what it remembers.</p>
+    <div class="links">
+      <a href="https://optiongenome.duckdns.org">optiongenome.duckdns.org</a>
+      <a href="https://github.com/Stella112/OptionGenome">github.com/Stella112/OptionGenome</a>
+    </div>
+    <p class="foot">Paper trading only. Simulated funds, real market data. Paper-trading results are hypothetical and do not represent actual trading. Not investment advice.</p>
+  </section>
+
+</div>
+
+<script>
+  (function () {
+    var rail = document.getElementById("rail");
+    var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
+    var reduce = matchMedia("(prefers-reduced-motion: reduce)");
+
+    function progress() {
+      var doc = document.documentElement;
+      var max = doc.scrollHeight - window.innerHeight;
+      rail.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + "%";
+    }
+    window.addEventListener("scroll", progress, { passive: true });
+    window.addEventListener("resize", progress);
+    progress();
+
+    // Arrow / space navigation, for presenting from a keyboard. The document
+    // scrolls natively, so wheel and touch already work without any handler.
+    document.addEventListener("keydown", function (e) {
+      var forward = e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ";
+      var back = e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp";
+      if (!forward && !back) return;
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      e.preventDefault();
+
+      var top = window.scrollY;
+      var next = null;
+      for (var i = 0; i < slides.length; i++) {
+        var y = slides[i].offsetTop;
+        if (forward && y > top + 8) { next = y; break; }
+        if (back && y < top - 8) { next = y; }
+      }
+      if (next === null) next = forward ? document.documentElement.scrollHeight : 0;
+      window.scrollTo({ top: next, behavior: reduce.matches ? "auto" : "smooth" });
+    });
+  })();
+</script>
