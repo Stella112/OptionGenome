@@ -265,35 +265,40 @@ def test_candidates_survive_the_risk_officer(chain, config):
 # --- expiry preference (operator decision, 2026-09-01) -----------------------
 
 
-def test_candidates_come_from_the_furthest_eligible_expiry(config):
-    """Positions are held through the results announcement, so duration wins."""
+def test_the_furthest_expiry_can_be_targeted_on_demand(config):
+    """The duration preference still works; it is simply not the default.
+
+    Default is off because, with a long-dated position already held, targeting
+    the furthest expiry every pass deadlocks against the overlapping-short check.
+    """
     chain = []
     for days in (3, 9, 17):
         chain += synthetic_chain(TODAY + timedelta(days=days))
-    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    tickets = generate_candidates(
+        chain, income(), config, TODAY, NOW, prefer_longest_expiry=True
+    )
     assert tickets
     assert {t.expiry for t in tickets} == {(TODAY + timedelta(days=17)).isoformat()}
 
 
-def test_richest_first_still_available(config):
-    """The old behaviour remains one flag away."""
+def test_richest_first_is_the_default(config):
+    """Default behaviour ranks by credit across every eligible expiry."""
     chain = []
     for days in (3, 17):
         chain += synthetic_chain(TODAY + timedelta(days=days))
-    tickets = generate_candidates(
-        chain, income(), config, TODAY, NOW, prefer_longest_expiry=False
-    )
-    assert tickets
+    assert generate_candidates(chain, income(), config, TODAY, NOW)
 
 
 def test_a_barren_far_expiry_falls_back_to_a_nearer_one(config):
-    """A thin far-dated ladder must not strand the desk with no candidates."""
+    """A thin far-dated ladder must not strand the desk when targeting duration."""
     near = synthetic_chain(TODAY + timedelta(days=4))
     far = [
         ChainContract(c.symbol, c.underlying, c.expiry, c.strike, c.right, 0.0, c.ask, c.ts, c.delta)
         for c in synthetic_chain(TODAY + timedelta(days=17))
     ]
-    tickets = generate_candidates(near + far, income(), config, TODAY, NOW)
+    tickets = generate_candidates(
+        near + far, income(), config, TODAY, NOW, prefer_longest_expiry=True
+    )
     assert tickets
     assert {t.expiry for t in tickets} == {(TODAY + timedelta(days=4)).isoformat()}
 
