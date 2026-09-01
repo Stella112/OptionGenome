@@ -216,6 +216,32 @@ class OrderCommand:
         )
 
 
+def check_authenticated(binary: str = CLI_BINARY, runner=None) -> tuple[bool, str]:
+    """Ask the installed binary whether it is actually authenticated.
+
+    Reading the captured reference file only proves the capture happened, not
+    that a profile is logged in. Startup gate item 13 must not report PASS on a
+    binary that will reject the first order of the session.
+    """
+    # The PATH check only applies to the real binary. An injected runner IS the
+    # binary as far as this check is concerned, so tests need no executable.
+    if runner is None and cli_binary_path(binary) is None:
+        return False, f"{binary!r} is not on PATH"
+
+    run = runner or AlpacaCLI._subprocess_runner
+    try:
+        code, stdout, stderr = run([binary, "doctor"])
+    except Exception as exc:
+        return False, f"could not run '{binary} doctor': {type(exc).__name__}: {exc}"
+
+    output = "\n".join(part for part in (stdout, stderr) if part).strip()
+    if "authentication required" in output.lower() or "profile login" in output.lower():
+        return False, "not authenticated: run 'alpaca profile login'"
+    if code != 0:
+        return False, output[:200] or f"'{binary} doctor' exited {code}"
+    return True, "authenticated"
+
+
 class AlpacaCLI:
     """Constructs and runs broker write commands. Every write passes the guards."""
 

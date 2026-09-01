@@ -206,12 +206,17 @@ def run_gate(
     _run(result, 13, "cli_available", check_cli)
 
     def check_cli_auth() -> str:
-        reference = state.get("cli_reference")
-        if reference is None:
-            raise CLIUnavailable("CLI reference unavailable; cannot confirm authentication")
-        if "doctor" not in reference.text:
-            raise CLIUnavailable("no 'alpaca doctor' output captured; authentication unconfirmed")
-        return "doctor output captured"
+        """Ask the live binary, not the captured file.
+
+        A captured reference proves only that the capture ran. Authentication is
+        session state, so it is verified against the binary every startup.
+        """
+        from .broker.alpaca_cli import check_authenticated
+
+        ok, detail = check_authenticated()
+        if not ok:
+            raise CLIUnavailable(detail)
+        return detail
 
     _run(result, 14, "cli_authenticated", check_cli_auth)
 
