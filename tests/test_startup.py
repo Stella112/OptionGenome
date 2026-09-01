@@ -68,13 +68,18 @@ def test_every_check_reports_a_detail():
 # --- the current machine -----------------------------------------------------
 
 
-def test_gate_halts_without_cli_and_mcp():
-    """No Alpaca CLI, no MCP server: the desk must not start."""
+def test_gate_halts_without_mcp():
+    """No MCP server connected: the desk must not start.
+
+    Deliberately does not assert on the CLI checks. Whether the alpaca binary
+    happens to be installed is a property of the machine, not an invariant, and
+    a test that asserts it passes on a laptop and fails on the deploy host.
+    """
     result = gate()
     assert result.state is SystemState.HALTED
     assert not result.passed
     failed = {o.name for o in result.failures}
-    assert {"cli_available", "mcp_connection", "mcp_capabilities"} <= failed
+    assert {"mcp_connection", "mcp_capabilities"} <= failed
 
 
 def test_checks_independent_of_day_zero_already_pass():
@@ -96,7 +101,16 @@ def test_failures_are_actionable():
     """A failure must say what to do, not merely that something is wrong."""
     result = gate()
     assert "alpaca-mcp-server" in outcome(result, "mcp_connection").detail
-    assert "not on PATH" in outcome(result, "cli_available").detail
+    for failure in result.failures:
+        assert len(failure.detail) > 20, f"{failure.name} gives no guidance: {failure.detail}"
+
+
+def test_any_single_failure_halts_the_gate():
+    """The invariant is all-or-nothing, whatever the machine happens to have."""
+    result = gate()
+    assert result.failures
+    assert result.state is SystemState.HALTED
+    assert not result.passed
 
 
 # --- individual failure modes ------------------------------------------------
