@@ -45,8 +45,14 @@ MAX_CANDIDATES_DEFAULT = 3
 #: Ranking purely by credit-to-width favours near-dated expiries (a live run
 #: produced Sept 9 and Sept 10 candidates when Sept 18 was the intent), so the
 #: builder walks expiries from longest to shortest and stops at the first that
-#: yields viable structures. Set to False to restore richest-first behaviour.
-PREFER_LONGEST_EXPIRY = True
+#: yields viable structures.
+#:
+#: Turned back OFF on 2026-09-01 once the Sept 18 position was established. With
+#: it on, every pass targeted Sept 18, and the overlapping-short check correctly
+#: refused to stack a second structure on an expiry already held -- so the desk
+#: deadlocked and would never have traded again. Off, it works the nearer
+#: expiries while the long-dated position runs, which is the point of holding it.
+PREFER_LONGEST_EXPIRY = False
 
 
 @dataclass(frozen=True)

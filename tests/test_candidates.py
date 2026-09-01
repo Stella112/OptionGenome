@@ -296,3 +296,19 @@ def test_a_barren_far_expiry_falls_back_to_a_nearer_one(config):
     tickets = generate_candidates(near + far, income(), config, TODAY, NOW)
     assert tickets
     assert {t.expiry for t in tickets} == {(TODAY + timedelta(days=4)).isoformat()}
+
+
+def test_a_held_expiry_does_not_deadlock_the_desk(config):
+    """With a position already on the furthest expiry, nearer ones stay available.
+
+    Regression: preferring the longest expiry made every pass target the expiry
+    already held, which the overlapping-short check refuses, so the desk stopped
+    trading entirely.
+    """
+    chain = []
+    for days in (4, 9, 17):
+        chain += synthetic_chain(TODAY + timedelta(days=days))
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert tickets
+    expiries = {t.expiry for t in tickets}
+    assert expiries != {(TODAY + timedelta(days=17)).isoformat()}
