@@ -70,7 +70,12 @@ def build_account(
     if not raw:
         raise ReconcileError("broker returned no account")
 
-    account_id = str(raw.get("id") or raw.get("account_id") or "").strip()
+    # `account_number` (PA3Y88DE6VC4) is what the dashboard shows, what the
+    # hackathon asks judges to match against, and what MODE is configured with.
+    # `id` is an internal UUID and is deliberately not the identity used here.
+    account_id = str(
+        raw.get("account_number") or raw.get("account_id") or raw.get("id") or ""
+    ).strip()
     if not account_id:
         raise ReconcileError("broker account payload has no id")
 

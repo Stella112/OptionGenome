@@ -27,15 +27,36 @@ CONNECT_TIMEOUT = 60.0
 CALL_TIMEOUT = 45.0
 
 
+#: Alpaca's MCP server wraps every payload as
+#:   {"_alpaca_mcp_security": {...}, "data": {...the real payload...}}
+#: The security block is a provenance notice marking the contents as untrusted
+#: tool output. We honour that by treating the payload strictly as data -- it is
+#: parsed into typed values and never interpreted as instructions.
+SECURITY_ENVELOPE_KEY = "_alpaca_mcp_security"
+ENVELOPE_DATA_KEY = "data"
+
+
+def unwrap_envelope(payload: Any) -> Any:
+    """Return the inner payload when the security envelope is present."""
+    if (
+        isinstance(payload, dict)
+        and SECURITY_ENVELOPE_KEY in payload
+        and ENVELOPE_DATA_KEY in payload
+    ):
+        return payload[ENVELOPE_DATA_KEY]
+    return payload
+
+
 def _extract(result: Any) -> Any:
     """Pull usable data out of an MCP tool result.
 
-    Servers return content blocks; Alpaca's return JSON text. Falls back to the
-    raw text when it is not JSON, so a human-readable error is never swallowed.
+    Servers return content blocks; Alpaca's return JSON text inside a security
+    envelope. Falls back to the raw text when it is not JSON, so a
+    human-readable error is never swallowed.
     """
     structured = getattr(result, "structuredContent", None)
     if structured:
-        return structured
+        return unwrap_envelope(structured)
 
     content = getattr(result, "content", None) or []
     texts = [getattr(block, "text", None) for block in content]

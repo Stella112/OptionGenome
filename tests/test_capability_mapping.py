@@ -146,3 +146,65 @@ def test_write_verbs_cover_every_mutating_live_tool():
     """A new mutating tool appearing upstream must not slip through unnoticed."""
     unguarded = [t for t in MUTATING if not any(v in t for v in WRITE_VERBS)]
     assert unguarded == []
+
+
+# --- MCP payload envelope ----------------------------------------------------
+
+
+def test_security_envelope_is_unwrapped():
+    """Alpaca wraps payloads as {_alpaca_mcp_security, data}; callers want data."""
+    from src.broker.mcp_stdio import unwrap_envelope
+
+    payload = {
+        "_alpaca_mcp_security": {"trust": "untrusted_tool_output"},
+        "data": {"account_number": "PA3Y88DE6VC4", "equity": "100000"},
+    }
+    assert unwrap_envelope(payload) == {"account_number": "PA3Y88DE6VC4", "equity": "100000"}
+
+
+def test_unwrapping_leaves_a_bare_payload_alone():
+    from src.broker.mcp_stdio import unwrap_envelope
+
+    assert unwrap_envelope({"equity": "1"}) == {"equity": "1"}
+    assert unwrap_envelope([1, 2]) == [1, 2]
+    assert unwrap_envelope(None) is None
+
+
+def test_partial_envelope_is_not_unwrapped():
+    """Only unwrap when both marker keys are present, never on a stray 'data' key."""
+    from src.broker.mcp_stdio import unwrap_envelope
+
+    payload = {"data": {"x": 1}}
+    assert unwrap_envelope(payload) == payload
+
+
+def test_account_identity_uses_account_number_not_the_internal_uuid():
+    """MODE and the hackathon both match on PA3Y88DE6VC4, not the UUID."""
+    from src.journal import Journal
+    from src.reconcile import build_account
+
+    raw = {
+        "id": "6d4e1e3e-215e-474c-8ad0-c1518dff3669",
+        "account_number": "PA3Y88DE6VC4",
+        "equity": "100000",
+        "cash": "100000",
+        "buying_power": "400000",
+        "last_equity": "100000",
+        "options_trading_level": 3,
+    }
+    account = build_account(raw, "PA3Y88DE6VC4", Journal("journal/_test_ident.jsonl"))
+    assert account.account_id == "PA3Y88DE6VC4"
+    assert account.options_level == 3
+    assert account.equity == 100_000.0
+    assert account.buying_power == 400_000.0
+
+
+def test_read_bridge_refuses_mutating_tools():
+    """Even a mis-mapped capability cannot place an order through the read path."""
+    from src.broker.alpaca_mcp import MCPUnavailable
+    from src.broker.mcp_stdio import MCPStdioBridge
+
+    bridge = MCPStdioBridge()
+    for tool in ("place_option_order", "cancel_all_orders", "close_all_positions"):
+        with pytest.raises(MCPUnavailable, match="refusing to call mutating tool"):
+            bridge.call_tool(tool, {})

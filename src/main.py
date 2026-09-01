@@ -58,7 +58,7 @@ def account_snapshot(mcp: AlpacaMCP) -> dict[str, Any] | None:
     except (TypeError, ValueError):
         level = 0
     return {
-        "account_id": str(raw.get("id") or raw.get("account_number") or ""),
+        "account_id": str(raw.get("account_number") or raw.get("id") or ""),
         "options_level": level,
         "buying_power": float(raw.get("buying_power") or 0.0),
         "equity": float(raw.get("equity") or 0.0),
