@@ -22,9 +22,11 @@ from .broker.alpaca_cli import AlpacaCLI, CLIUnavailable, load_cli_reference
 from .broker.alpaca_mcp import AlpacaMCP, MCPUnavailable, discover_capabilities
 from .broker.mcp_stdio import MCPStdioBridge
 from .config import load_config
+from .marketdata import fetch_chain, fetch_daily_bars, market_clock
 from .journal import Journal
 from .loop import TradingLoop
 from .rolldesk.ranker import FeatherlessRanker
+from .signals_builder import InsufficientData, build_signals
 from .safety import ExecutionMode, SafetyViolation
 from .startup import run_gate
 from .types import SystemState
@@ -130,12 +132,34 @@ def main(argv: list[str] | None = None) -> int:
         loop, mcp = build_desk(journal, bridge)
         print("\nSYSTEM_STATE = READY; entering the trading loop")
 
+        config = load_config()
+        underlying = config.underlyings[0]
+
         while True:
             now = datetime.now(timezone.utc)
-            # Chain and signals are supplied by the market-data layer; a pass
-            # with neither still reconciles and manages open positions.
-            passed = loop.run_once(chain=[], signals=None, open_positions=[], now=now)
-            print(f"[{now:%H:%M:%S}] {passed.as_dict()}")
+            try:
+                bars = fetch_daily_bars(mcp, underlying)
+                chain = fetch_chain(mcp, underlying, config, today=now.date())
+                signals = build_signals(bars, implied_vol=None, now=now, journal=journal)
+            except (InsufficientData, MCPUnavailable) as exc:
+                # No data means no opinion. Open positions are still managed on
+                # the next pass; nothing is opened on a guess.
+                journal.record("ERROR", stage="market_data", error=str(exc))
+                print(f"[{now:%H:%M:%S}] market data unavailable: {exc}", file=sys.stderr)
+                if args.once:
+                    return 1
+                time.sleep(POLL_SECONDS)
+                continue
+
+            passed = loop.run_once(
+                chain=chain, signals=signals, open_positions=[], now=now
+            )
+            summary = passed.as_dict()
+            print(
+                f"[{now:%H:%M:%S}] regime={summary['regime']} "
+                f"contracts={len(chain)} candidates={len(summary['candidates'])} "
+                f"submitted={summary['submitted']} notes={summary['notes']}"
+            )
             if args.once:
                 return 0
             time.sleep(POLL_SECONDS)
