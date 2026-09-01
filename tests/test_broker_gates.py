@@ -125,9 +125,21 @@ def test_manifest_round_trips(tmp_path):
     assert restored.mapping == capabilities.mapping
 
 
-def test_shipped_manifest_is_still_a_placeholder():
-    """No MCP server has been connected yet, so the manifest must be empty."""
-    assert load_tool_manifest("docs/mcp-tools.json") is None
+def test_shipped_manifest_holds_a_real_discovery():
+    """Captured from the connected alpaca-mcp-server 3.4.7 on 2026-09-01."""
+    manifest = load_tool_manifest("docs/mcp-tools.json")
+    assert manifest is not None
+    assert len(manifest.discovered) >= 60
+    assert manifest.complete
+
+
+def test_shipped_manifest_maps_no_capability_to_a_write_tool():
+    """The committed artifact must carry the safe mapping, not just the code."""
+    from src.broker.alpaca_mcp import is_write_tool
+
+    manifest = load_tool_manifest("docs/mcp-tools.json")
+    for capability, tool in manifest.mapping.items():
+        assert not is_write_tool(tool), f"{capability} -> {tool}"
 
 
 # --- CLI gate (spec section 4) ----------------------------------------------
