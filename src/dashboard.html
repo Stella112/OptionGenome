@@ -1,0 +1,191 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>OptionGenome</title>
+<style>
+  :root {
+    --bg: #0b0e14;
+    --panel: #131720;
+    --panel-2: #1a1f2b;
+    --line: #232a38;
+    --text: #e6e9ef;
+    --muted: #8b94a7;
+    --accent: #5eead4;
+    --allow: #34d399;
+    --deny: #f87171;
+    --warn: #fbbf24;
+    --mono: ui-monospace, SFMono-Regular, "SF Mono", Menlo, Consolas, monospace;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--text);
+    font: 15px/1.55 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  }
+  .wrap { max-width: 1180px; margin: 0 auto; padding: 32px 20px 64px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 26px; margin: 0; letter-spacing: -0.02em; }
+  .tag {
+    font: 600 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .09em;
+    padding: 5px 9px; border-radius: 999px; border: 1px solid var(--line); color: var(--muted);
+  }
+  .sub { color: var(--muted); margin: 0 0 26px; max-width: 68ch; }
+  .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); }
+  .card {
+    background: var(--panel); border: 1px solid var(--line);
+    border-radius: 12px; padding: 16px 18px;
+  }
+  .card h3 {
+    margin: 0 0 8px; font: 600 11px/1 var(--mono); letter-spacing: .09em;
+    text-transform: uppercase; color: var(--muted);
+  }
+  .big { font: 600 27px/1.15 var(--mono); letter-spacing: -0.02em; }
+  .note { color: var(--muted); font-size: 12.5px; margin-top: 6px; }
+  section { margin-top: 34px; }
+  section > h2 {
+    font-size: 13px; text-transform: uppercase; letter-spacing: .09em;
+    color: var(--muted); margin: 0 0 12px; font-family: var(--mono); font-weight: 600;
+  }
+  table { width: 100%; border-collapse: collapse; font-size: 13.5px; }
+  th, td { text-align: left; padding: 9px 10px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { color: var(--muted); font: 600 11px/1 var(--mono); text-transform: uppercase; letter-spacing: .07em; }
+  td.mono, .mono { font-family: var(--mono); font-size: 12.5px; }
+  .scroll { overflow-x: auto; border: 1px solid var(--line); border-radius: 12px; background: var(--panel); }
+  .pill {
+    display: inline-block; padding: 2px 8px; border-radius: 999px;
+    font: 600 11px/1.6 var(--mono); border: 1px solid transparent;
+  }
+  .ALLOW, .PASS { color: var(--allow); background: rgba(52,211,153,.1); border-color: rgba(52,211,153,.3); }
+  .DENY, .FAIL { color: var(--deny); background: rgba(248,113,113,.1); border-color: rgba(248,113,113,.3); }
+  .INCOME { color: var(--allow); background: rgba(52,211,153,.1); }
+  .COMPRESSION { color: var(--accent); background: rgba(94,234,212,.1); }
+  .MOMENTUM, .EVENT { color: var(--warn); background: rgba(251,191,36,.1); }
+  .HALTED { color: var(--deny); }
+  .READY { color: var(--allow); }
+  .reasons { color: var(--muted); font-family: var(--mono); font-size: 12px; }
+  .empty { color: var(--muted); padding: 28px; text-align: center; }
+  footer { margin-top: 44px; color: var(--muted); font-size: 12.5px; border-top: 1px solid var(--line); padding-top: 16px; }
+  a { color: var(--accent); }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>OptionGenome</h1>
+    <span class="tag">Alpaca paper trading</span>
+    <span class="tag" id="state-tag">loading</span>
+  </header>
+  <p class="sub">
+    An autonomous defined-risk options desk. MarketDNA decides what is <em>legal</em>;
+    Roll Desk decides what and when; a deterministic Risk Officer decides whether
+    capital moves at all. The model may only pick from a shortlist it cannot write.
+  </p>
+
+  <div class="grid" id="tiles"></div>
+
+  <section>
+    <h2>Startup readiness gate</h2>
+    <div class="scroll"><table id="gate"><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Why trades were refused</h2>
+    <div class="scroll"><table id="denies"><tbody></tbody></table></div>
+  </section>
+
+  <section>
+    <h2>Decision journal</h2>
+    <div class="scroll"><table id="journal">
+      <thead><tr><th>Time</th><th>Event</th><th>Detail</th></tr></thead>
+      <tbody></tbody>
+    </table></div>
+  </section>
+
+  <footer>
+    Paper trading only. Simulated funds, real market data. Not investment advice.
+    <span id="updated"></span>
+  </footer>
+</div>
+
+<script>
+const $ = (s) => document.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;",'"':"&quot;"}[c]));
+const pct = (v) => v == null ? "—" : (v * 100).toFixed(2) + "%";
+const money = (v) => v == null ? "—" : "$" + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0});
+
+async function get(path) {
+  try { const r = await fetch(path); return r.ok ? await r.json() : null; }
+  catch { return null; }
+}
+
+function tiles(s, cfg) {
+  const regime = s?.regime ?? "—";
+  return [
+    ["Regime", `<span class="pill ${esc(regime)}">${esc(regime)}</span>`,
+      (s?.regime_reasons || []).slice(0, 2).join(" · ")],
+    ["Equity", money(s?.equity), s?.high_water_mark ? "peak " + money(s.high_water_mark) : ""],
+    ["Drawdown", pct(s?.drawdown), cfg ? "flatten at " + pct(cfg.dd_flatten_pct) : ""],
+    ["Open structures", s?.open_structures ?? "0", cfg ? "max " + cfg.max_open_structures : ""],
+    ["Allowed", s?.allows ?? 0, "tickets cleared by the Risk Officer"],
+    ["Refused", s?.denies ?? 0, "tickets the Risk Officer stopped"],
+  ].map(([k, v, n]) => `<div class="card"><h3>${esc(k)}</h3><div class="big">${v}</div>${n ? `<div class="note">${esc(n)}</div>` : ""}</div>`).join("");
+}
+
+function gateRows(g) {
+  if (!g) return `<tr><td class="empty">gate unavailable</td></tr>`;
+  return g.checks.map(c => `<tr>
+    <td class="mono" style="width:38px;color:var(--muted)">${c.index}</td>
+    <td style="width:88px"><span class="pill ${c.passed ? "PASS" : "FAIL"}">${c.passed ? "PASS" : "FAIL"}</span></td>
+    <td class="mono" style="width:200px">${esc(c.name)}</td>
+    <td class="reasons">${esc(c.detail)}</td>
+  </tr>`).join("");
+}
+
+function denyRows(s) {
+  const rows = s?.top_deny_reasons || [];
+  if (!rows.length) return `<tr><td class="empty">No refusals recorded yet.</td></tr>`;
+  const max = Math.max(...rows.map(r => r[1]));
+  return rows.map(([reason, n]) => `<tr>
+    <td class="mono" style="width:320px">${esc(reason)}</td>
+    <td style="width:60px" class="mono">${n}</td>
+    <td><div style="height:8px;border-radius:4px;background:var(--deny);opacity:.55;width:${(n / max * 100).toFixed(0)}%"></div></td>
+  </tr>`).join("");
+}
+
+function detail(e) {
+  const skip = new Set(["ts", "event"]);
+  return Object.entries(e).filter(([k]) => !skip.has(k))
+    .map(([k, v]) => `${k}=${typeof v === "object" ? JSON.stringify(v) : v}`)
+    .join("  ").slice(0, 260);
+}
+
+function journalRows(j) {
+  const entries = j?.entries || [];
+  if (!entries.length) return `<tr><td class="empty" colspan="3">Journal is empty. The desk has not run a pass yet.</td></tr>`;
+  return entries.slice(0, 120).map(e => `<tr>
+    <td class="mono" style="width:150px;color:var(--muted)">${esc((e.ts || "").replace("T", " ").slice(0, 19))}</td>
+    <td style="width:130px"><span class="pill ${esc(e.event)}">${esc(e.event)}</span></td>
+    <td class="reasons">${esc(detail(e))}</td>
+  </tr>`).join("");
+}
+
+async function refresh() {
+  const [s, g, j, cfg] = await Promise.all([
+    get("/api/summary"), get("/api/gate"), get("/api/journal?limit=120"), get("/api/config"),
+  ]);
+  $("#tiles").innerHTML = tiles(s, cfg);
+  $("#gate").querySelector("tbody").innerHTML = gateRows(g);
+  $("#denies").querySelector("tbody").innerHTML = denyRows(s);
+  $("#journal").querySelector("tbody").innerHTML = journalRows(j);
+  const tag = $("#state-tag");
+  tag.textContent = g ? g.state : "unknown";
+  tag.className = "tag " + (g ? g.state : "");
+  $("#updated").textContent = s?.last_updated ? " · last event " + s.last_updated.replace("T", " ").slice(0, 19) : "";
+}
+
+refresh();
+setInterval(refresh, 15000);
+</script>
+</body>
+</html>
