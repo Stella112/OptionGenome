@@ -208,3 +208,46 @@ def test_read_bridge_refuses_mutating_tools():
     for tool in ("place_option_order", "cancel_all_orders", "close_all_positions"):
         with pytest.raises(MCPUnavailable, match="refusing to call mutating tool"):
             bridge.call_tool(tool, {})
+
+
+def test_extract_unwraps_both_result_shapes():
+    """Regression: the JSON-text branch once returned the envelope unwrapped."""
+    from src.broker.mcp_stdio import _extract
+
+    envelope = {
+        "_alpaca_mcp_security": {"trust": "untrusted_tool_output"},
+        "data": {"account_number": "PA3Y88DE6VC4"},
+    }
+    expected = {"account_number": "PA3Y88DE6VC4"}
+
+    class Structured:
+        structuredContent = envelope
+        content = []
+
+    class TextBlock:
+        def __init__(self, text):
+            self.text = text
+
+    class TextResult:
+        structuredContent = None
+
+        def __init__(self, payload):
+            import json as _json
+
+            self.content = [TextBlock(_json.dumps(payload))]
+
+    assert _extract(Structured()) == expected
+    assert _extract(TextResult(envelope)) == expected
+
+
+def test_extract_preserves_a_non_json_error_message():
+    from src.broker.mcp_stdio import _extract
+
+    class TextBlock:
+        text = "rate limit exceeded"
+
+    class Result:
+        structuredContent = None
+        content = [TextBlock()]
+
+    assert _extract(Result()) == "rate limit exceeded"

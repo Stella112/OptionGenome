@@ -54,21 +54,26 @@ def _extract(result: Any) -> Any:
     envelope. Falls back to the raw text when it is not JSON, so a
     human-readable error is never swallowed.
     """
+    # Decode first, unwrap once. Unwrapping at each return site let the JSON-text
+    # branch drift out of sync with the structuredContent branch, which silently
+    # handed callers the envelope instead of the payload.
+    payload: Any
+
     structured = getattr(result, "structuredContent", None)
     if structured:
-        return unwrap_envelope(structured)
+        payload = structured
+    else:
+        content = getattr(result, "content", None) or []
+        texts = [t for t in (getattr(block, "text", None) for block in content) if t]
+        if not texts:
+            return None
+        joined = "\n".join(texts)
+        try:
+            payload = json.loads(joined)
+        except json.JSONDecodeError:
+            return joined  # a human-readable error is never swallowed
 
-    content = getattr(result, "content", None) or []
-    texts = [getattr(block, "text", None) for block in content]
-    texts = [t for t in texts if t]
-    if not texts:
-        return None
-
-    joined = "\n".join(texts)
-    try:
-        return json.loads(joined)
-    except json.JSONDecodeError:
-        return joined
+    return unwrap_envelope(payload)
 
 
 class MCPStdioBridge:
