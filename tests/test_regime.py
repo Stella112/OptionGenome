@@ -56,8 +56,10 @@ def test_compression_below_the_iv_rank_threshold(config):
 
 
 def test_event_at_the_window_boundary(config):
-    assert classify(signals(hours_to_event=24.0), config)[0] is Regime.EVENT
-    assert classify(signals(hours_to_event=24.01), config)[0] is Regime.INCOME
+    """The boundary tracks config, so tuning the window cannot silently break it."""
+    window = config.event_window_hours
+    assert classify(signals(hours_to_event=window), config)[0] is Regime.EVENT
+    assert classify(signals(hours_to_event=window + 0.01), config)[0] is Regime.INCOME
 
 
 # --- mandatory evaluation order ----------------------------------------------

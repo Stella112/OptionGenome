@@ -1,7 +1,1338 @@
-PENDING - populate from the installed binary (spec section 4).
-Required captures:
-  alpaca doctor
-  alpaca --help-all
-  alpaca order submit --help
-  alpaca order submit --schema
-The installed CLI is the source of truth. No CLI argument may be written from memory.
+# Captured from installed binary v0.0.14 on 2026-09-01T12:23:01Z
+
+===== alpaca doctor =====
+Alpaca CLI 0.0.14
+  Go:       go1.24.0
+  OS/Arch:  linux/amd64
+
+Config:     /root/.config/alpaca
+  ✗ config directory does not exist
+  ✗ no profiles configured — run `alpaca profile login`
+  ✓ active profile: paper
+  ✗ no credentials — run `alpaca profile login`
+
+{
+  "code": 0,
+  "error": "some checks failed",
+  "hint": "",
+  "status": 0
+}
+
+===== alpaca --help-all =====
+ALPACA CLI — Complete Reference
+────────────────────────────────────────
+
+Trade stocks & crypto, access market data, and manage your Alpaca account from the command line.
+
+To update:  alpaca update
+
+GLOBAL FLAGS
+  --csv                    Output as CSV
+  --debug                  Show HTTP request/response headers and bodies on stderr
+  -h, --help               help for alpaca
+  --help-all               Print full reference for every command
+  --jq                     Filter output with a jq expression
+  -p, --profile            Config profile to use
+  -q, --quiet              Suppress non-data output (warnings, hints, color)
+  --schema                 Show response schema for this command and exit
+  --timeout                HTTP request timeout in seconds (default: 30)
+  --trace                  Show HTTP timing breakdown on stderr (DNS, TLS, TTFB)
+  -v, --verbose            Show HTTP request details on stderr
+  --version                Print the version of alpaca CLI
+
+── alpaca account  —  Manage your trading account
+  ── alpaca account activity  —  Account activities (fills, dividends, transfers, etc.)
+    ── alpaca account activity list
+       Retrieve account activities
+       Usage: alpaca account activity list [flags]
+       Flags:
+         --activity-types         A comma-separated list of activity types used to filter the results
+         --after                  get activities created after this date. Both formats YYYY-MM-DD and YYYY-MM-DDTHH:MM:SSZ are supported
+         --category               activity category. Cannot be used with "activity_types" parameter
+         --date                   filter activities by their creation date (created_at), not the activity's settlement date
+         --direction              chronological order of response based on the activity datetime (default: desc)
+         --order-id               filter activities associated with a specific order
+         --page-size              maximum number of entries to return in the response (default: 100)
+         --page-token             token used for pagination. Provide the ID of the last activity from the last page to retrieve the next set of results
+         --until                  get activities created before this date. Both formats YYYY-MM-DD and YYYY-MM-DDTHH:MM:SSZ are supported
+       Examples:
+         alpaca account activity list
+         alpaca account activity list --activity-types FILL,TRANS --page-size 20
+         alpaca account activity list --direction desc
+
+    ── alpaca account activity list-by-type
+       Retrieve account activities of specific type
+       Usage: alpaca account activity list-by-type [flags]
+       Flags:
+         --activity-type          activity type you want to view entries for. A list of valid activity types can be found at the bottom of this page
+         --after                  get activities created after this date. Both formats YYYY-MM-DD and YYYY-MM-DDTHH:MM:SSZ are supported
+         --date                   filter activities by their creation date (created_at), not the activity's settlement date
+         --direction              chronological order of response based on the activity datetime (default: desc)
+         --order-id               filter activities associated with a specific order
+         --page-size              maximum number of entries to return in the response (default: 100)
+         --page-token             token used for pagination. Provide the ID of the last activity from the last page to retrieve the next set of results
+         --until                  get activities created before this date. Both formats YYYY-MM-DD and YYYY-MM-DDTHH:MM:SSZ are supported
+       Examples:
+         alpaca account activity list-by-type --activity-type FILL --page-size 20
+         alpaca account activity list-by-type --activity-type DIV --after 2025-01-01
+
+  ── alpaca account config  —  Manage account configuration
+    ── alpaca account config get
+       Get account configurations
+       Usage: alpaca account config get
+       Examples:
+         alpaca account config get
+
+    ── alpaca account config set
+       Update account configurations
+       Usage: alpaca account config set [flags]
+       Flags:
+         --disable-overnight-trading if true, overnight trading is disabled
+         --fractional-trading     if true, account is able to participate in fractional trading
+         --max-margin-multiplier  can be "1", "2", or "4"
+         --max-options-trading-level desired maximum options trading level. 0=disabled, 1=Covered Call/Cash-Secured Put, 2=Long Call/Put, 3=Spreads/Straddles
+         --no-shorting            if true, account becomes long-only mode
+         --ptp-no-exception-entry if set to true then Alpaca will accept orders for PTP symbols with no exception. Default is false
+         --suspend-trade          if true, new orders are blocked
+         --trade-confirm-email    all or none. If none, emails for order fills are not sent
+       Examples:
+         alpaca account config set --no-shorting true
+         alpaca account config set --dtbp-check entry
+
+  ── alpaca account get
+     Get account
+     Usage: alpaca account get
+     Examples:
+       alpaca account get
+
+  ── alpaca account portfolio
+     Get account portfolio history
+     Usage: alpaca account portfolio [flags]
+     Flags:
+       --cashflow-types         cashflow activities to include in the report. One of 'ALL', 'NONE', or a comma-separated list of activity types
+       --end                    timestamp the data is returned up to in RFC3339 format (including timezone specification)
+       --extended-hours         **deprecated**: Users are strongly advised to **rely on the intraday_reporting query parameter** for better control
+o...
+       --intraday-reporting     for intraday resolutions (<1D) this specifies which timestamps to return data points for:
+
+Allowed values are:
+- **ma... (default: market_hours)
+       --period                 duration of the data in number + unit format, such as 1D, where unit can be D for day, W for week, M for month and A ...
+       --pnl-reset              pnl_reset defines how we are calculating the baseline values for Profit And Loss (pnl) for queries with timeframe les... (default: per_day)
+       --start                  timestamp the data is returned starting from in RFC3339 format (including timezone specification)
+       --timeframe              resolution of time window
+     Examples:
+       alpaca account portfolio
+       alpaca account portfolio --period 1M --timeframe 1D
+
+── alpaca api
+   Raw API access
+   Usage: alpaca api [METHOD] <path> [flags]
+   Flags:
+     --body                   JSON request body
+     --query                  Query string to append (e.g. "status=open&limit=10")
+     --use-data-api           Use data API base URL instead of trading API
+   Examples:
+     alpaca api /v2/account
+     alpaca api GET /v2/orders
+     alpaca api POST /v2/orders --body '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}'
+     alpaca api GET /v2/orders --query "status=open&limit=10"
+     echo '{"symbol":"AAPL","qty":"1","side":"buy","type":"market","time_in_force":"day"}' | alpaca api POST /v2/orders
+
+── alpaca asset  —  Browse assets
+  ── alpaca asset get
+     Get an asset by ID or symbol
+     Usage: alpaca asset get [flags]
+     Flags:
+       --symbol-or-asset-id     symbol or assetId. CUSIP is also accepted for US equities
+     Examples:
+       alpaca asset get --symbol-or-asset-id AAPL
+       alpaca asset get --symbol-or-asset-id BTC/USD
+
+  ── alpaca asset list
+     Get assets
+     Usage: alpaca asset list [flags]
+     Flags:
+       --asset-class            defaults to us_equity
+       --attributes             comma separated values to query for more than one attribute
+       --exchange               optional AMEX, ARCA, BATS, NYSE, NASDAQ, NYSEARCA, OTC or CRYPTO
+       --status                 e.g. "active". By default, all statuses are included
+     Examples:
+       alpaca asset list
+       alpaca asset list --asset-class us_equity --status active
+       alpaca asset list --exchange NYSE
+
+── alpaca calendar  —  Market calendar
+  ── alpaca calendar market
+     Get market calendar
+     Usage: alpaca calendar market [flags]
+     Flags:
+       --end                    last date to retrieve data for (inclusive). Default: one week from the start date
+       --market                 market identifier
+       --start                  first date to retrieve data for (inclusive). Default: today
+       --timezone               timezone of the times. Default: the timezone of the market
+     Examples:
+       alpaca calendar market --market XNYS --start 2025-01-01
+
+── alpaca clock  —  Market clock
+  ── alpaca clock markets
+     Get market clock
+     Usage: alpaca clock markets [flags]
+     Flags:
+       --markets                comma-separated list of markets
+       --time                   instead of the current time, use this time for the clock
+     Examples:
+       alpaca clock markets --markets XNYS,XNAS
+
+── alpaca corporate-action  —  Corporate actions announcements
+  ── alpaca corporate-action get
+     Retrieve a specific announcement
+     Usage: alpaca corporate-action get [flags]
+     Flags:
+       --id                     corporate announcement's id
+     Examples:
+       alpaca corporate-action get --id <announcement-id>
+
+  ── alpaca corporate-action list
+     Retrieve announcements
+     Usage: alpaca corporate-action list [flags]
+     Flags:
+       --ca-types               A comma-delimited list of corporate action types
+       --cusip                  CUSIP of the company initiating the announcement
+       --date-type              declaration_date, ex_date, record_date, or payable_date
+       --since                  start (inclusive) of the date range when searching corporate action announcements
+       --symbol                 symbol of the company initiating the announcement
+       --until                  end (inclusive) of the date range when searching corporate action announcements
+     Examples:
+       alpaca corporate-action list --ca-types reverse_split --since 2025-01-01 --until 2025-12-31
+       alpaca corporate-action list --ca-types cash_dividend --symbol AAPL --since 2025-01-01 --until 2025-06-30
+
+── alpaca data  —  Access market data
+  ── alpaca data auction
+     Get historical auctions (single)
+     Usage: alpaca data auction [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   only sip is valid for auctions (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbol                 symbol to query
+     Examples:
+       alpaca data auction --symbol AAPL --start 2025-01-01
+
+  ── alpaca data auctions
+     Get historical auctions
+     Usage: alpaca data auctions [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   only sip is valid for auctions (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data auctions --symbols AAPL --start 2025-01-01
+       alpaca data auctions --symbols AAPL,MSFT --limit 10
+
+  ── alpaca data bars
+     Get historical bars (single symbol)
+     Usage: alpaca data bars [flags]
+     Flags:
+       --adjustment             specifies the adjustments for the bars.
+
+ - raw: no adjustments
+ - split: adjust price and volume for forward and rev... (default: raw)
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbol                 symbol to query
+       --timeframe              timeframe represented by each bar in aggregation.
+You can use any of the following values:
+ - [1-59]Min or [1-59]T, e.g
+     Examples:
+       alpaca data bars --symbol AAPL --start 2025-01-01 --timeframe 1Day
+       alpaca data bars --symbol AAPL --start 2025-01-01 --end 2025-06-01 --limit 100
+
+  ── alpaca data corporate-actions
+     Get corporate actions
+     Usage: alpaca data corporate-actions [flags]
+     Flags:
+       --cusips                 A comma-separated list of CUSIPs
+       --data-quality           controls which corporate actions are returned based on data quality (default: complete)
+       --end                    inclusive end of the interval
+       --ids                    A comma-separated list of corporate action IDs
+       --limit                  maximum number of corporate actions to return in a response. (default: 100)
+       --page-token             pagination token from which to continue
+       --region                 region to filter corporate actions by (default: us)
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of symbols
+       --types                  A comma-separated list of types
+     Examples:
+       alpaca data corporate-actions --symbols AAPL --types forward_split --start 2025-01-01
+
+  ── alpaca data crypto  —  Crypto market data
+    ── alpaca data crypto bars
+       Get historical bars
+       Usage: alpaca data crypto bars [flags]
+       Flags:
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --loc                    crypto location from where the historical market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --symbols                A comma-separated list of crypto symbols
+         --timeframe              timeframe represented by each bar in aggregation.
+You can use any of the following values:
+ - [1-59]Min or [1-59]T, e.g
+       Examples:
+         alpaca data crypto bars --symbols BTC/USD --start 2025-01-01 --timeframe 1Day
+
+    ── alpaca data crypto latest-bars
+       Get latest bars
+       Usage: alpaca data crypto latest-bars [flags]
+       Flags:
+         --loc                    crypto location from where the latest market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto latest-bars --symbols BTC/USD
+
+    ── alpaca data crypto latest-quotes
+       Get latest quotes
+       Usage: alpaca data crypto latest-quotes [flags]
+       Flags:
+         --loc                    crypto location from where the latest market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto latest-quotes --symbols BTC/USD
+
+    ── alpaca data crypto latest-trades
+       Get latest trades
+       Usage: alpaca data crypto latest-trades [flags]
+       Flags:
+         --loc                    crypto location from where the latest market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto latest-trades --symbols BTC/USD
+
+    ── alpaca data crypto quotes
+       Get historical quotes
+       Usage: alpaca data crypto quotes [flags]
+       Flags:
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --loc                    crypto location from where the historical market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto quotes --symbols BTC/USD --start 2025-01-01
+
+    ── alpaca data crypto snapshots
+       Get snapshots
+       Usage: alpaca data crypto snapshots [flags]
+       Flags:
+         --loc                    crypto location from where the latest market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto snapshots --symbols BTC/USD
+
+    ── alpaca data crypto trades
+       Get historical trades
+       Usage: alpaca data crypto trades [flags]
+       Flags:
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --loc                    crypto location from where the historical market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --symbols                A comma-separated list of crypto symbols
+       Examples:
+         alpaca data crypto trades --symbols BTC/USD --start 2025-01-01
+
+  ── alpaca data crypto-orderbook
+     Get latest orderbook
+     Usage: alpaca data crypto-orderbook [flags]
+     Flags:
+       --loc                    crypto location from where the latest market data is retrieved.
+- us: Alpaca US
+- us-1: Kraken US
+- eu-1: Kraken EU (default: us)
+       --symbols                A comma-separated list of crypto symbols
+     Examples:
+       alpaca data crypto-orderbook --symbols BTC/USD,ETH/USD
+
+  ── alpaca data fixed-income  —  Fixed income market data
+    ── alpaca data fixed-income latest-prices
+       Get latest prices
+       Usage: alpaca data fixed-income latest-prices [flags]
+       Flags:
+         --isins                  A comma-separated list of ISINs with a limit of 1000
+       Examples:
+         alpaca data fixed-income latest-prices --isins US912797KJ59,US912797KS58
+
+    ── alpaca data fixed-income latest-quotes
+       Get latest quotes
+       Usage: alpaca data fixed-income latest-quotes [flags]
+       Flags:
+         --isins                  A comma-separated list of ISINs with a limit of 100
+         --trade-size             filters to best bid/ask where the minimum trade size is less than or equal to the given numeric value
+       Examples:
+         alpaca data fixed-income latest-quotes --isins US912797SX61,US912810SK51
+         alpaca data fixed-income latest-quotes --isins US912797SX61 --trade-size 1000
+
+  ── alpaca data forex  —  Foreign exchange rate data
+    ── alpaca data forex latest
+       Get latest rates for currency pairs
+       Usage: alpaca data forex latest [flags]
+       Flags:
+         --currency-pairs         currency pairs
+       Examples:
+         alpaca data forex latest --currency-pairs EUR/USD,GBP/USD
+
+    ── alpaca data forex rates
+       Get historical rates for currency pairs
+       Usage: alpaca data forex rates [flags]
+       Flags:
+         --currency-pairs         currency pairs
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --timeframe              sampling interval of the currency rates (default: 1Min)
+       Examples:
+         alpaca data forex rates --currency-pairs EUR/USD,GBP/USD --start 2025-01-01
+         alpaca data forex rates --currency-pairs USD/JPY --timeframe 1Hour
+
+  ── alpaca data latest-bar
+     Get latest bar (single symbol)
+     Usage: alpaca data latest-bar [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbol                 symbol to query
+     Examples:
+       alpaca data latest-bar --symbol AAPL
+
+  ── alpaca data latest-bars
+     Get latest bars
+     Usage: alpaca data latest-bars [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data latest-bars --symbols AAPL,MSFT
+
+  ── alpaca data latest-quote
+     Get latest quote (single symbol)
+     Usage: alpaca data latest-quote [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbol                 symbol to query
+     Examples:
+       alpaca data latest-quote --symbol AAPL
+
+  ── alpaca data latest-quotes
+     Get latest quotes
+     Usage: alpaca data latest-quotes [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data latest-quotes --symbols AAPL,MSFT
+
+  ── alpaca data latest-trade
+     Get latest trade (single symbol)
+     Usage: alpaca data latest-trade [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbol                 symbol to query
+     Examples:
+       alpaca data latest-trade --symbol AAPL
+       alpaca data latest-trade --symbol AAPL --feed sip
+
+  ── alpaca data latest-trades
+     Get latest trades
+     Usage: alpaca data latest-trades [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data latest-trades --symbols AAPL,MSFT
+
+  ── alpaca data logo
+     Get logos
+     Usage: alpaca data logo [flags]
+     Flags:
+       --placeholder            if true, returns a placeholder image when no logo is available. Defaults to true (default: true)
+       --symbol                 A unique series of letters assigned to a security for trading purposes
+     Examples:
+       alpaca data logo --symbol AAPL
+
+  ── alpaca data meta  —  Stock exchange and condition reference data
+    ── alpaca data meta conditions
+       Get condition codes
+       Usage: alpaca data meta conditions [flags]
+       Flags:
+         --tape                   one character name of the tape
+         --ticktype               type of ticks
+       Examples:
+         alpaca data meta conditions --ticktype trade
+
+    ── alpaca data meta exchanges
+       Get exchange codes
+       Usage: alpaca data meta exchanges
+       Examples:
+         alpaca data meta exchanges
+
+  ── alpaca data multi-bars
+     Get historical bars
+     Usage: alpaca data multi-bars [flags]
+     Flags:
+       --adjustment             specifies the adjustments for the bars.
+
+ - raw: no adjustments
+ - split: adjust price and volume for forward and rev... (default: raw)
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of stock symbols
+       --timeframe              timeframe represented by each bar in aggregation.
+You can use any of the following values:
+ - [1-59]Min or [1-59]T, e.g
+     Examples:
+       alpaca data multi-bars --symbols AAPL,MSFT --start 2025-01-01 --timeframe 1Day
+
+  ── alpaca data multi-quotes
+     Get historical quotes
+     Usage: alpaca data multi-quotes [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data multi-quotes --symbols AAPL,MSFT --start 2025-01-01
+
+  ── alpaca data multi-snapshots
+     Get snapshots
+     Usage: alpaca data multi-snapshots [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data multi-snapshots --symbols AAPL,MSFT
+
+  ── alpaca data multi-trades
+     Get historical trades
+     Usage: alpaca data multi-trades [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of stock symbols
+     Examples:
+       alpaca data multi-trades --symbols AAPL,MSFT --start 2025-01-01
+
+  ── alpaca data news
+     Get news articles
+     Usage: alpaca data news [flags]
+     Flags:
+       --end                    inclusive end of the interval
+       --exclude-contentless    boolean indicator to exclude news articles that do not contain content
+       --include-content        boolean indicator to include content for news articles (if available)
+       --limit                  limit of news items to be returned for a result page
+       --page-token             pagination token from which to continue
+       --sort                   sort articles by updated date (default: desc)
+       --start                  inclusive start of the interval
+       --symbols                A comma-separated list of symbols for which to query news
+     Examples:
+       alpaca data news
+       alpaca data news --symbols AAPL,MSFT --limit 10
+
+  ── alpaca data option  —  Options market data
+    ── alpaca data option bars
+       Get historical bars
+       Usage: alpaca data option bars [flags]
+       Flags:
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --symbols                A comma-separated list of contract symbols with a limit of 100
+         --timeframe              timeframe represented by each bar in aggregation.
+You can use any of the following values:
+ - [1-59]Min or [1-59]T, e.g
+       Examples:
+         alpaca data option bars --symbols AAPL250620C00200000 --start 2025-01-01
+         alpaca data option bars --symbols AAPL250620C00200000,AAPL250620P00200000 --timeframe 1Day
+
+    ── alpaca data option chain
+       Get option chain
+       Usage: alpaca data option chain [flags]
+       Flags:
+         --expiration-date        filter contracts by the exact expiration date (format: YYYY-MM-DD)
+         --expiration-date-gte    filter contracts with expiration date greater than or equal to the specified date
+         --expiration-date-lte    filter contracts with expiration date less than or equal to the specified date
+         --feed                   source feed of the data (default: opra)
+         --limit                  number of maximum snapshots to return in a response. (default: 100)
+         --page-token             pagination token from which to continue
+         --root-symbol            filter contracts by the root symbol
+         --strike-price-gte       filter contracts with strike price greater than or equal to the specified value
+         --strike-price-lte       filter contracts with strike price less than or equal to the specified value
+         --type                   filter contracts by the type (call or put)
+         --underlying-symbol      financial instrument on which an option contract is based or derived
+         --updated-since          filter to snapshots that were updated since this timestamp, meaning that the timestamp of the trade or the quote is g...
+       Examples:
+         alpaca data option chain --underlying-symbol AAPL
+         alpaca data option chain --underlying-symbol SPY --expiration-date 2025-06-20 --type call
+
+    ── alpaca data option conditions
+       Get condition codes
+       Usage: alpaca data option conditions [flags]
+       Flags:
+         --ticktype               type of ticks
+       Examples:
+         alpaca data option conditions --ticktype trade
+
+    ── alpaca data option exchanges
+       Get exchange codes
+       Usage: alpaca data option exchanges
+       Examples:
+         alpaca data option exchanges
+
+    ── alpaca data option latest-quotes
+       Get latest quotes
+       Usage: alpaca data option latest-quotes [flags]
+       Flags:
+         --feed                   source feed of the data (default: opra)
+         --symbols                A comma-separated list of contract symbols with a limit of 100
+       Examples:
+         alpaca data option latest-quotes --symbols AAPL250620C00200000
+
+    ── alpaca data option latest-trades
+       Get latest trades
+       Usage: alpaca data option latest-trades [flags]
+       Flags:
+         --feed                   source feed of the data (default: opra)
+         --symbols                A comma-separated list of contract symbols with a limit of 100
+       Examples:
+         alpaca data option latest-trades --symbols AAPL250620C00200000
+
+    ── alpaca data option snapshot
+       Get snapshots
+       Usage: alpaca data option snapshot [flags]
+       Flags:
+         --feed                   source feed of the data (default: opra)
+         --limit                  number of maximum snapshots to return in a response. (default: 100)
+         --page-token             pagination token from which to continue
+         --symbols                A comma-separated list of contract symbols with a limit of 100
+         --updated-since          filter to snapshots that were updated since this timestamp, meaning that the timestamp of the trade or the quote is g...
+       Examples:
+         alpaca data option snapshot --symbols AAPL250620C00200000
+         alpaca data option snapshot --symbols AAPL250620C00200000,AAPL250620P00200000
+
+    ── alpaca data option trades
+       Get historical trades
+       Usage: alpaca data option trades [flags]
+       Flags:
+         --end                    inclusive end of the interval
+         --limit                  maximum number of data points to return in the response page. (default: 1000)
+         --page-token             pagination token from which to continue
+         --sort                   sort data in ascending or descending order
+         --start                  inclusive start of the interval
+         --symbols                A comma-separated list of contract symbols with a limit of 100
+       Examples:
+         alpaca data option trades --symbols AAPL250620C00200000 --start 2025-01-01
+
+  ── alpaca data quotes
+     Get historical quotes (single symbol)
+     Usage: alpaca data quotes [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbol                 symbol to query
+     Examples:
+       alpaca data quotes --symbol AAPL --start 2025-01-01
+       alpaca data quotes --symbol AAPL --start 2025-01-01 --end 2025-01-31 --limit 50
+
+  ── alpaca data screener  —  Stock and crypto screener and market movers
+    ── alpaca data screener most-actives
+       Get most active stocks
+       Usage: alpaca data screener most-actives [flags]
+       Flags:
+         --by                     metric used for ranking the most active stocks (default: volume)
+         --top                    number of top most active stocks to fetch per day (default: 10)
+       Examples:
+         alpaca data screener most-actives
+         alpaca data screener most-actives --by trades --top 10
+
+    ── alpaca data screener movers
+       Get top market movers
+       Usage: alpaca data screener movers [flags]
+       Flags:
+         --market-type            screen-specific market (stocks or crypto) (default: stocks)
+         --top                    number of top market movers to fetch (gainers and losers) (default: 10)
+       Examples:
+         alpaca data screener movers
+         alpaca data screener movers --market-type crypto --top 5
+
+  ── alpaca data snapshot
+     Get snapshot (single symbol)
+     Usage: alpaca data snapshot [flags]
+     Flags:
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --feed                   source feed of the data.
+       --symbol                 symbol to query
+     Examples:
+       alpaca data snapshot --symbol AAPL
+       alpaca data snapshot --symbol AAPL --feed sip
+
+  ── alpaca data trades
+     Get historical trades (single symbol)
+     Usage: alpaca data trades [flags]
+     Flags:
+       --asof                   as-of date of the queried stock symbol(s)
+       --currency               currency of all prices in ISO 4217 format. Default: USD
+       --end                    inclusive end of the interval
+       --feed                   source feed of the data. (default: sip)
+       --limit                  maximum number of data points to return in the response page. (default: 1000)
+       --page-token             pagination token from which to continue
+       --sort                   sort data in ascending or descending order
+       --start                  inclusive start of the interval
+       --symbol                 symbol to query
+     Examples:
+       alpaca data trades --symbol AAPL --start 2025-01-01
+       alpaca data trades --symbol AAPL --start 2025-01-01 --limit 100
+
+── alpaca doctor
+   Check CLI configuration and connectivity
+   Usage: alpaca doctor
+   Examples:
+     alpaca doctor
+
+── alpaca locate  —  Manage locate requests
+  ── alpaca locate create
+     Create locate
+     Usage: alpaca locate create [flags]
+     Flags:
+       --all-or-none            reject the locate unless the full requested quantity is available
+       --idempotency-key        optional idempotency key for safe retries
+       --limit-price            maximum acceptable locate fee per share, as a decimal string in USD.
+If omitted, any quoted fee is accepted
+       --qty                    number of shares to locate. Must be positive and in round lots of 100; invalid quantities return HTTP 400
+       --symbol                 stock symbol
+     Examples:
+       alpaca locate create --symbol TSLA --qty 100
+       alpaca locate create --symbol TSLA --qty 100 --limit-price 0.05 --all-or-none true
+
+  ── alpaca locate get
+     Get locate
+     Usage: alpaca locate get [flags]
+     Flags:
+       --locate-id              locate ID
+     Examples:
+       alpaca locate get --locate-id <id>
+
+  ── alpaca locate list
+     List locates
+     Usage: alpaca locate list [flags]
+     Flags:
+       --end                    filter locates with locate trading date before this date (exclusive)
+       --limit                  maximum number of results to return (default: 1000)
+       --page-token             used for pagination, this token retrieves the next page of results
+       --start                  filter locates with locate trading date on or after this date
+       --status                 filter by locate status
+       --symbol                 filter by stock symbol
+     Examples:
+       alpaca locate list
+       alpaca locate list --symbol TSLA --status active --limit 100
+
+  ── alpaca locate quotes
+     Get locate quotes
+     Usage: alpaca locate quotes [flags]
+     Flags:
+       --symbols                comma-separated list of stock symbols. Maximum 100 unique symbols
+     Examples:
+       alpaca locate quotes --symbols TSLA,AAPL
+
+── alpaca option  —  Options trading
+  ── alpaca option contracts
+     Get option contracts
+     Usage: alpaca option contracts [flags]
+     Flags:
+       --expiration-date        filter contracts by the exact expiration date (format: YYYY-MM-DD)
+       --expiration-date-gte    filter contracts with expiration date greater than or equal to the specified date
+       --expiration-date-lte    filter contracts with expiration date less than or equal to the specified date
+       --limit                  number of contracts to limit per page (default=100, max=10000)
+       --page-token             used for pagination, this token retrieves the next page of results
+       --ppind                  ppind(Penny Program Indicator) field indicates whether an option contract is eligible for penny price increments,
+       --root-symbol            filter contracts by the root symbol
+       --show-deliverables      include deliverables array in the response
+       --status                 filter contracts by status (active/inactive). By default only active contracts are returned
+       --strike-price-gte       filter contracts with strike price greater than or equal to the specified value
+       --strike-price-lte       filter contracts with strike price less than or equal to the specified value
+       --style                  filter contracts by the style (american/european)
+       --type                   filter contracts by the type (call/put)
+       --underlying-symbols     filter contracts by one or more underlying symbols
+     Examples:
+       alpaca option contracts --underlying-symbols AAPL
+       alpaca option contracts --underlying-symbols AAPL --expiration-date 2025-06-20 --type call
+       alpaca option contracts --underlying-symbols SPY --strike-price-gte 400 --strike-price-lte 450
+
+  ── alpaca option do-not-exercise
+     Do not exercise an options position
+     Usage: alpaca option do-not-exercise [flags]
+     Flags:
+       --symbol-or-contract-id  option contract symbol or ID
+     Examples:
+       alpaca option do-not-exercise --symbol-or-contract-id AAPL250620C00200000
+
+  ── alpaca option exercise
+     Exercise an options position
+     Usage: alpaca option exercise [flags]
+     Flags:
+       --symbol-or-contract-id  option contract symbol or ID
+     Examples:
+       alpaca option exercise --symbol-or-contract-id AAPL250620C00200000
+
+  ── alpaca option get
+     Get an option contract by ID or symbol
+     Usage: alpaca option get [flags]
+     Flags:
+       --symbol-or-id           symbol or contract ID
+     Examples:
+       alpaca option get --symbol-or-id AAPL250620C00200000
+
+── alpaca order  —  Manage orders
+  ── alpaca order cancel
+     Delete order by ID
+     Usage: alpaca order cancel [flags]
+     Flags:
+       --order-id               order id
+     Examples:
+       alpaca order cancel --order-id <id>
+
+  ── alpaca order cancel-all
+     Delete all orders
+     Usage: alpaca order cancel-all
+     Examples:
+       alpaca order cancel-all
+
+  ── alpaca order get
+     Get order by ID
+     Usage: alpaca order get [flags]
+     Flags:
+       --nested                 if true, the result will roll up multi-leg orders under the legs field of primary order
+       --order-id               order id
+     Examples:
+       alpaca order get --order-id 61e69015-8549-4baf-b96f-9c4f3e8d0c35
+
+  ── alpaca order get-by-client-id
+     Get order by client order ID
+     Usage: alpaca order get-by-client-id [flags]
+     Flags:
+       --client-order-id        client-assigned order ID
+     Examples:
+       alpaca order get-by-client-id --client-order-id my-order-123
+
+  ── alpaca order list
+     Get all orders
+     Usage: alpaca order list [flags]
+     Flags:
+       --after                  response will include only ones submitted after this timestamp (exclusive.)
+       --after-order-id         return orders submitted after the order with this ID (exclusive).
+Mutually exclusive with before_order_id
+       --asset-class            A comma-separated list of asset classes, the response will include only orders in the specified asset classes
+       --before-order-id        return orders submitted before the order with this ID (exclusive).
+Mutually exclusive with after_order_id
+       --direction              chronological order of response based on the submission time. asc or desc. Defaults to desc
+       --limit                  maximum number of orders in response. Defaults to 50 and max is 500
+       --nested                 if true, the result will roll up multi-leg orders under the legs field of primary order
+       --side                   filters down to orders that have a matching side field set
+       --status                 order status to be queried. open, closed or all. Defaults to open (default: open)
+       --symbols                A comma-separated list of symbols to filter by (ex
+       --until                  response will include only ones submitted until this timestamp (exclusive.)
+     Examples:
+       alpaca order list
+       alpaca order list --status closed --limit 20
+       alpaca order list --symbols AAPL,MSFT --after 2025-01-01
+
+  ── alpaca order replace
+     Replace order by ID
+     Usage: alpaca order replace [flags]
+     Flags:
+       --advanced-instructions  advanced instructions for Elite Smart Router: https://docs.alpaca.markets/docs/alpaca-elite-smart-router
+       --client-order-id        A unique identifier for the new order. Automatically generated if not sent. (<= 128 characters)
+       --limit-price            required if original order's type field was limit or stop_limit.
+       --notional               new notional (dollar amount) for the order
+       --order-id               order id
+       --qty                    number of shares to trade.
+
+You can only patch full shares for now.
+
+Qty of equity fractional orders are not allowed ...
+       --stop-price             required if original order type is limit or stop_limit
+       --time-in-force          time-In-Force values supported by Alpaca vary based on the order's security type
+       --trail                  the new value of the trail_price or trail_percent value (works only for type="trailing_stop")
+     Examples:
+       alpaca order replace --order-id <id> --qty 20 --limit-price 190.00
+
+  ── alpaca order submit
+     Create an order
+     Usage: alpaca order submit [flags]
+     Flags:
+       --advanced-instructions  advanced instructions for Elite Smart Router: https://docs.alpaca.markets/docs/alpaca-elite-smart-router
+       --client-order-id        A unique identifier for the order. Automatically generated if not sent. (<= 128 characters)
+       --dry-run                Print the request body without submitting
+       --extended-hours         (default) false
+       --legs                   list of order legs (<= 4)
+       --limit-price            required if type is limit or stop_limit.
+       --notional               dollar amount to trade. Cannot work with qty. Can only work for market order types and day for time in force
+       --order-class            order classes supported by Alpaca vary based on the order's security type
+       --position-intent        represents the desired position strategy
+       --qty                    number of shares to trade
+       --side                   represents which side this order was on:
+- buy
+- sell
+Required for all order classes except for mleg
+       --stop-loss              takes in string/number values for stop_price and limit_price
+       --stop-price             required if type is stop or stop_limit
+       --symbol                 symbol, asset ID, or currency pair to identify the asset to trade, required for all order classes except for mleg
+       --take-profit            takes in a string/number value for limit_price
+       --time-in-force          time-In-Force values supported by Alpaca vary based on the order's security type
+       --trail-percent          this or trail_price is required if type is trailing_stop
+       --trail-price            this or trail_percent is required if type is trailing_stop
+       --type                   order types supported by Alpaca vary based on the order's security type (default: market)
+     Examples:
+       alpaca order submit --symbol AAPL --qty 10 --side buy --type market
+       alpaca order submit --symbol AAPL --qty 5 --side buy --type limit --limit-price 185.00
+       alpaca order submit --symbol AAPL --qty 10 --side sell --type stop --stop-price 175.00
+       alpaca order submit --symbol AAPL --notional 1000 --side buy --type market
+
+── alpaca position  —  Manage positions
+  ── alpaca position close
+     Close a position
+     Usage: alpaca position close [flags]
+     Flags:
+       --percentage             percentage of position to liquidate
+       --qty                    the number of shares to liquidate. Can accept up to 9 decimal points. Cannot work with percentage
+       --symbol-or-asset-id     symbol or assetId
+     Examples:
+       alpaca position close --symbol-or-asset-id AAPL
+       alpaca position close --symbol-or-asset-id AAPL --qty 5
+       alpaca position close --symbol-or-asset-id AAPL --percentage 50
+
+  ── alpaca position close-all
+     Close all positions
+     Usage: alpaca position close-all [flags]
+     Flags:
+       --cancel-orders          if true is specified, cancel all open orders before liquidating all positions
+     Examples:
+       alpaca position close-all
+
+  ── alpaca position get
+     Get an open position
+     Usage: alpaca position get [flags]
+     Flags:
+       --symbol-or-asset-id     symbol or assetId
+     Examples:
+       alpaca position get --symbol-or-asset-id AAPL
+       alpaca position get --symbol-or-asset-id BTC/USD
+
+  ── alpaca position list
+     List all open positions
+     Usage: alpaca position list
+     Examples:
+       alpaca position list
+       alpaca position list --csv
+
+── alpaca profile  —  Manage connection profiles
+  ── alpaca profile list
+     List all profiles
+     Usage: alpaca profile list
+     Examples:
+       alpaca profile list
+
+  ── alpaca profile login
+     Authenticate via browser OAuth or API keys
+     Usage: alpaca profile login [flags]
+     Flags:
+       --api-key                Use API key/secret authentication instead of OAuth
+       --key                    API key (requires --api-key)
+       --live                   Target live trading
+       --name                   Profile name (default: paper)
+       --no-validate            Skip credential validation
+       --paper                  Target paper trading (default)
+       --scope                  OAuth scopes, comma-separated (default: all)
+       --secret                 Secret key (requires --api-key)
+     Examples:
+       alpaca profile login                    # OAuth via browser (paper, default)
+       alpaca profile login --scope trading    # OAuth with specific scopes
+       alpaca profile login --api-key          # API key/secret login
+       alpaca profile login --api-key --live   # API keys for live trading
+       alpaca profile login --api-key --key PKXXXXXXXX --secret XXXXXXXX
+       alpaca profile login --api-key --live --name prod
+
+  ── alpaca profile logout
+     Remove a profile
+     Usage: alpaca profile logout [name]
+     Examples:
+       alpaca profile logout
+       alpaca profile logout live
+
+  ── alpaca profile switch
+     Switch the active profile
+     Usage: alpaca profile switch <name>
+     Examples:
+       alpaca profile switch live
+       alpaca profile switch paper
+
+── alpaca update
+   Check for updates and (optionally) install them
+   Usage: alpaca update [flags]
+   Flags:
+     --check                  Print update status as JSON without prompting
+     --yes                    Skip the confirmation prompt and run the upgrade immediately
+   Examples:
+     alpaca update
+     alpaca update --yes
+     alpaca update --check
+
+── alpaca version
+   Print the version of alpaca CLI
+   Usage: alpaca version
+   Examples:
+     alpaca version
+
+── alpaca wallet  —  Crypto funding wallets and transfers
+  ── alpaca wallet list
+     Retrieve crypto funding wallets
+     Usage: alpaca wallet list [flags]
+     Flags:
+       --asset                  filter by crypto asset symbol, e.g. BTC, ETH, USDT. If specified and no wallet exists, one will be created
+       --chain                  optional chain identifier
+       --network                deprecated
+     Examples:
+       alpaca wallet list
+
+  ── alpaca wallet transfer  —  Manage crypto transfers
+    ── alpaca wallet transfer create
+       Request a new withdrawal
+       Usage: alpaca wallet transfer create [flags]
+       Flags:
+         --address                destination wallet address
+         --amount                 amount, denoted in the specified asset, to be withdrawn from the user's wallet
+         --asset                  crypto asset symbol, e.g. BTC, ETH, USDT
+         --chain                  chain identifier for multi-chain crypto assets
+       Examples:
+         alpaca wallet transfer create --amount 0.5 --address 0xabc... --asset BTC
+
+    ── alpaca wallet transfer estimate
+       Returns the estimated gas fee for a proposed transaction
+       Usage: alpaca wallet transfer estimate [flags]
+       Flags:
+         --amount                 amount, denoted in the specified asset, of the proposed transaction
+         --asset                  asset for the proposed transaction
+         --from-address           originating address of the proposed transaction
+         --to-address             destination address of the proposed transaction
+       Examples:
+         alpaca wallet transfer estimate --asset BTC --amount 0.5 \
+         --from-address 0xabc... --to-address 0xdef...
+
+    ── alpaca wallet transfer get
+       Retrieve a crypto funding transfer
+       Usage: alpaca wallet transfer get [flags]
+       Flags:
+         --transfer-id            crypto transfer to retrieve
+       Examples:
+         alpaca wallet transfer get --transfer-id <id>
+
+    ── alpaca wallet transfer list
+       Retrieve crypto funding transfers
+       Usage: alpaca wallet transfer list
+       Examples:
+         alpaca wallet transfer list
+
+  ── alpaca wallet whitelist  —  Manage whitelisted crypto addresses
+    ── alpaca wallet whitelist add
+       Request a new whitelisted address
+       Usage: alpaca wallet whitelist add [flags]
+       Flags:
+         --address                address to be whitelisted
+         --asset                  symbol of underlying asset for the whitelisted address
+         --chain                  chain identifier for multi-chain crypto assets
+       Examples:
+         alpaca wallet whitelist add --address 0xabc... --asset ETH
+
+    ── alpaca wallet whitelist delete
+       Delete a whitelisted address
+       Usage: alpaca wallet whitelist delete [flags]
+       Flags:
+         --whitelisted-address-id whitelisted address to delete
+       Examples:
+         alpaca wallet whitelist delete --whitelisted-address-id <id>
+
+    ── alpaca wallet whitelist list
+       Get an array of whitelisted addresses
+       Usage: alpaca wallet whitelist list
+       Examples:
+         alpaca wallet whitelist list
+
+── alpaca watchlist  —  Manage watchlists
+  ── alpaca watchlist add
+     Add asset to watchlist
+     Usage: alpaca watchlist add [flags]
+     Flags:
+       --symbol                 the symbol name to add to the watchlist
+       --watchlist-id           watchlist id
+     Examples:
+       alpaca watchlist add --watchlist-id <id> --symbol AAPL
+
+  ── alpaca watchlist add-by-name
+     Add asset to watchlist by name
+     Usage: alpaca watchlist add-by-name [flags]
+     Flags:
+       --name                   name of the watchlist
+       --symbol                 the symbol name to add to the watchlist
+     Examples:
+       alpaca watchlist add-by-name --name "Tech Stocks" --symbol NVDA
+
+  ── alpaca watchlist create
+     Create watchlist
+     Usage: alpaca watchlist create [flags]
+     Flags:
+       --name                   watchlist name
+       --symbols                list of asset symbols to include in the watchlist
+     Examples:
+       alpaca watchlist create --name "Tech Stocks" --symbols AAPL,MSFT,GOOG
+
+  ── alpaca watchlist delete
+     Delete watchlist by id
+     Usage: alpaca watchlist delete [flags]
+     Flags:
+       --watchlist-id           watchlist id
+     Examples:
+       alpaca watchlist delete --watchlist-id <id>
+
+  ── alpaca watchlist delete-by-name
+     Delete watchlist by name
+     Usage: alpaca watchlist delete-by-name [flags]
+     Flags:
+       --name                   name of the watchlist
+     Examples:
+       alpaca watchlist delete-by-name --name "Tech Stocks"
+
+  ── alpaca watchlist get
+     Get watchlist by ID
+     Usage: alpaca watchlist get [flags]
+     Flags:
+       --watchlist-id           watchlist id
+     Examples:
+       alpaca watchlist get --watchlist-id <id>
+
+  ── alpaca watchlist get-by-name
+     Get watchlist by name
+     Usage: alpaca watchlist get-by-name [flags]
+     Flags:
+       --name                   name of the watchlist
+     Examples:
+       alpaca watchlist get-by-name --name "Tech Stocks"
+
+  ── alpaca watchlist list
+     Get all watchlists
+     Usage: alpaca watchlist list
+     Examples:
+       alpaca watchlist list
+
+  ── alpaca watchlist remove
+     Delete symbol from watchlist
+     Usage: alpaca watchlist remove [flags]
+     Flags:
+       --symbol                 symbol name to remove from the watchlist content
+       --watchlist-id           watchlist ID
+     Examples:
+       alpaca watchlist remove --watchlist-id <id> --symbol AAPL
+
+  ── alpaca watchlist remove-by-name
+     Delete symbol from watchlist by name
+     Usage: alpaca watchlist remove-by-name [flags]
+     Flags:
+       --name                   name of the watchlist
+       --symbol                 symbol name to remove from the watchlist
+     Examples:
+       alpaca watchlist remove-by-name --name "Tech Stocks" --symbol AAPL
+
+  ── alpaca watchlist update
+     Update watchlist by id
+     Usage: alpaca watchlist update [flags]
+     Flags:
+       --name                   new watchlist name
+       --symbols                list of asset symbols to include in the watchlist. The existing assets will be replaced with the new list
+       --watchlist-id           watchlist id
+     Examples:
+       alpaca watchlist update --watchlist-id <id> --name "Updated" --symbols AAPL,MSFT
+
+  ── alpaca watchlist update-by-name
+     Update watchlist by name
+     Usage: alpaca watchlist update-by-name [flags]
+     Flags:
+       --name                   name of the watchlist
+       --new-name               The new watchlist name.
+       --symbols                list of asset symbols to include in the watchlist. The existing assets will be replaced with the new list
+     Examples:
+       alpaca watchlist update-by-name --name "Tech Stocks" --new-name "Technology" --symbols AAPL,MSFT
+
+
+===== alpaca order submit --help =====
+Places a new order for the given account. An order request may be rejected if the account is not authorized for trading, or if the tradable balance is insufficient to fill the order
+
+Usage:
+  alpaca order submit [flags]
+
+Examples:
+  alpaca order submit --symbol AAPL --qty 10 --side buy --type market
+  alpaca order submit --symbol AAPL --qty 5 --side buy --type limit --limit-price 185.00
+  alpaca order submit --symbol AAPL --qty 10 --side sell --type stop --stop-price 175.00
+  alpaca order submit --symbol AAPL --notional 1000 --side buy --type market
+
+Flags:
+      --advanced-instructions string   advanced instructions for Elite Smart Router: https://docs.alpaca.markets/docs/alpaca-elite-smart-router
+      --client-order-id string         A unique identifier for the order. Automatically generated if not sent. (<= 128 characters)
+      --dry-run                        Print the request body without submitting
+      --extended-hours                 (default) false
+  -h, --help                           help for submit
+      --legs string                    list of order legs (<= 4)
+      --limit-price string             required if type is limit or stop_limit.
+      --notional string                dollar amount to trade. Cannot work with qty. Can only work for market order types and day for time in force
+      --order-class string             order classes supported by Alpaca vary based on the order's security type
+      --position-intent string         represents the desired position strategy
+      --qty string                     number of shares to trade
+      --side string                    represents which side this order was on:
+                                       - buy
+                                       - sell
+                                       Required for all order classes except for mleg
+      --stop-loss string               takes in string/number values for stop_price and limit_price
+      --stop-price string              required if type is stop or stop_limit
+      --symbol string                  symbol, asset ID, or currency pair to identify the asset to trade, required for all order classes except for mleg
+      --take-profit string             takes in a string/number value for limit_price
+      --time-in-force string           time-In-Force values supported by Alpaca vary based on the order's security type
+      --trail-percent string           this or trail_price is required if type is trailing_stop
+      --trail-price string             this or trail_percent is required if type is trailing_stop
+      --type string                    order types supported by Alpaca vary based on the order's security type (default "market")
+
+Global Flags:
+      --csv              Output as CSV
+      --debug            Show HTTP request/response headers and bodies on stderr
+      --jq string        Filter output with a jq expression
+  -p, --profile string   Config profile to use
+  -q, --quiet            Suppress non-data output (warnings, hints, color)
+      --schema           Show response schema for this command and exit
+      --timeout int      HTTP request timeout in seconds (default 30)
+      --trace            Show HTTP timing breakdown on stderr (DNS, TLS, TTFB)
+  -v, --verbose          Show HTTP request details on stderr
+
+===== alpaca order submit --schema =====
+// Create an order
+{
+  asset_class: "corporate" | "crypto" | "crypto_perp" | "global_equity" | "ipo" | "treasury" | "us_equity" | "us_equity_chain" | "us_index" | "us_option"; // this represents the category to which the asset belongs to
+  asset_id: string; // asset ID (For options this represents the option contract ID)
+  canceled_at: string; // canceled at
+  client_order_id: string; // client unique order ID
+  created_at: string; // created at
+  expired_at: string; // expired at
+  expires_at: string; // expires at
+  extended_hours: boolean; // if true, eligible for execution outside regular trading hours
+  failed_at: string; // failed at
+  filled_at: string; // filled at
+  filled_avg_price: string; // filled average price
+  filled_qty: string; // filled quantity
+  hwm: string; // highest (lowest) market price seen since the trailing stop order was submitted
+  id: string; // order ID
+  legs: object[]; // when querying non-simple order_class orders in a nested style, an array of Order entities associated with this order
+  limit_price: string; // limit price
+  notional: string; // ordered notional amount. If entered, qty will be null. Can take up to 9 decimal points
+  order_class: "bracket" | "mleg" | "oco" | "oto" | "simple"; // order classes supported by Alpaca vary based on the order's security type
+  order_type: string; // deprecated in favour of the field "type"
+  position_intent: "buy_to_close" | "buy_to_open" | "sell_to_close" | "sell_to_open"; // represents the desired position strategy
+  qty: string; // ordered quantity. If entered, notional will be null. Can take up to 9 decimal points. Required if order class is mleg
+  ratio_qty: string; // proportional quantity of this leg in relation to the overall multi-leg order quantity
+  replaced_at: string; // replaced at
+  replaced_by: string; // order ID that this order was replaced by
+  replaces: string; // order ID that this order replaces
+  side: "buy" | "sell"; // represents which side this order was on:
+  status: "accepted" | "accepted_for_bidding" | "calculated" | "canceled" | "done_for_day" | "expired" | "filled" | "held" | "new" | "partially_filled" | "pending_cancel" | "pending_new" | "pending_replace" | "rejected" | "replaced" | "stopped" | "suspended"; // an order executed through Alpaca can experience several status changes during its lifecycle
+  stop_price: string; // stop price
+  submitted_at: string; // submitted at
+  symbol: string; // asset symbol, required for all order classes except for mleg
+  time_in_force: "cls" | "day" | "fok" | "gtc" | "ioc" | "opg"; // time-In-Force values supported by Alpaca vary based on the order's security type
+  trail_percent: string; // percent value away from the high water mark for trailing stop orders
+  trail_price: string; // dollar value away from the high water mark for trailing stop orders
+  type: "limit" | "market" | "stop" | "stop_limit" | "trailing_stop"; // order types supported by Alpaca vary based on the order's security type
+  updated_at: string; // updated at
+}

@@ -33,5 +33,12 @@ max_quote_age_ms: 5000
 adx_trend_threshold: 25
 iv_rank_low: 30
 
-event_window_hours: 24
+# CHANGED from 24 -> 4 on 2026-09-01, deliberately, after simulation.
+# With a 24h window and events on Sep 1/2/3/4, every session sat inside the
+# window of the NEXT event, so the desk classified EVENT continuously and could
+# never open a position for the entire competition. Verified by simulation, not
+# assumed. 4h still blocks the hours around each release (JOLTS, NFP) while
+# leaving the rest of the session tradeable.
+# To restore the original behaviour, set this back to 24.
+event_window_hours: 4
 final_session_minutes: 15

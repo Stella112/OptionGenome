@@ -40,7 +40,7 @@ def test_shipped_config_matches_the_frozen_spec(config):
     assert config.max_quote_age_ms == 5000
     assert config.adx_trend_threshold == 25
     assert config.iv_rank_low == 30
-    assert config.event_window_hours == 24
+    assert config.event_window_hours == 4  # widened window blocked every session; see config.yaml
     assert config.final_session_minutes == 15
 
 

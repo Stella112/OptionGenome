@@ -133,10 +133,20 @@ def test_shipped_manifest_is_still_a_placeholder():
 # --- CLI gate (spec section 4) ----------------------------------------------
 
 
-def test_shipped_cli_reference_is_still_a_placeholder():
+def test_shipped_cli_reference_is_captured_and_usable():
+    """Captured from the installed binary on 2026-09-01, so the write path may unlock."""
     reference = load_cli_reference("docs/cli-reference.txt")
-    assert reference.is_placeholder
-    assert not reference.is_usable
+    assert not reference.is_placeholder
+    assert reference.missing_captures == ()
+    assert reference.is_usable
+
+
+def test_captured_reference_carries_the_real_submit_flags():
+    """Guards against the file being replaced by something that is not the real schema."""
+    text = load_cli_reference("docs/cli-reference.txt").text
+    for flag in ("--order-class", "--legs", "--qty", "--type", "--limit-price", "--time-in-force"):
+        assert flag in text, flag
+    assert "mleg" in text
 
 
 def test_verify_cli_halts_when_the_binary_is_absent():
@@ -215,14 +225,27 @@ def test_uncaptured_schema_blocks_the_write_path():
         cli().preflight(make_ticket(), allow(), "DEV-1", "READY")
 
 
-def test_submit_command_halts_rather_than_guessing_flags(tmp_path):
-    """Spec section 4: no CLI argument may be implemented from memory."""
+def test_sending_halts_until_the_legs_format_is_proven(tmp_path):
+    """Spec section 4: no CLI argument may be implemented from memory.
+
+    The captured help documents --legs only as "list of order legs (<= 4)" and
+    says nothing about its wire format. A command may therefore be BUILT and
+    inspected, but never SENT, until --dry-run proves the encoding against the
+    installed binary.
+    """
+    from src.broker.alpaca_cli import LegsFormatUnverified
+
     path = tmp_path / "ref.txt"
     path.write_text("\n".join(REQUIRED_CAPTURES), encoding="utf-8")
-    with pytest.raises(CLIUnavailable, match="pending the captured CLI schema"):
-        cli(load_cli_reference(path)).build_submit_command(
-            make_ticket(), allow(), limit_price=1.00, actual_account_id="DEV-1"
-        )
+    desk = AlpacaCLI(
+        execution_mode=ExecutionMode.from_env(DEV_ENV),
+        trading_host=PAPER,
+        reference=load_cli_reference(path),
+        runner=lambda argv: (0, "{}", ""),
+    )
+    command = desk.build_submit_command(make_ticket(), allow(), "DEV-1")
+    with pytest.raises(LegsFormatUnverified):
+        desk.submit(command, "DEV-1")
 
 
 def test_a_live_host_blocks_the_write_path(tmp_path):
@@ -244,7 +267,7 @@ def test_no_direct_broker_access_outside_the_adapters():
     """Only src/broker/alpaca_mcp.py and alpaca_cli.py may touch the broker."""
     from pathlib import Path
 
-    forbidden = ("alpaca_py", "alpaca.trading", "alpaca.data", "requests.post", "httpx.post")
+    forbidden_imports = ("alpaca_py", "alpaca_trade_api", "alpaca.trading", "alpaca.data")
     allowed = {"alpaca_mcp.py", "alpaca_cli.py"}
 
     offenders = []
@@ -252,10 +275,27 @@ def test_no_direct_broker_access_outside_the_adapters():
         if path.name in allowed:
             continue
         text = path.read_text(encoding="utf-8")
-        for needle in forbidden:
+        for needle in forbidden_imports:
             if needle in text:
-                offenders.append(f"{path}: {needle}")
+                offenders.append(f"{path}: imports {needle}")
+        for line in text.splitlines():
+            lowered = line.lower()
+            if "alpaca.markets" in lowered and "safetyviolation" not in lowered:
+                if any(verb in lowered for verb in ("post(", "get(", "put(", "request(")):
+                    offenders.append(f"{path}: direct HTTP to Alpaca -> {line.strip()}")
     assert not offenders, f"direct broker access outside the adapters: {offenders}"
+
+
+def test_only_the_cli_adapter_shells_out_to_the_alpaca_binary():
+    """Writes go through the CLI adapter, never a subprocess started elsewhere."""
+    from pathlib import Path
+
+    offenders = [
+        str(path)
+        for path in Path("src").rglob("*.py")
+        if path.name != "alpaca_cli.py" and "subprocess" in path.read_text(encoding="utf-8")
+    ]
+    assert not offenders, f"subprocess use outside the CLI adapter: {offenders}"
 
 
 def test_paper_host_is_the_only_host_in_the_repo():

@@ -54,6 +54,17 @@ class PositionIntent(str, Enum):
         return Side.BUY if self.name.startswith("BUY") else Side.SELL
 
 
+class Action(str, Enum):
+    """Lifecycle verdict for one already-open structure (spec section 14)."""
+
+    HOLD = "HOLD"
+    TAKE_PROFIT = "TAKE_PROFIT"
+    DEFEND = "DEFEND"
+    ROLL = "ROLL"
+    FLATTEN = "FLATTEN"
+    EXPIRE = "EXPIRE"
+
+
 class SystemState(str, Enum):
     BOOTING = "BOOTING"
     READY = "READY"

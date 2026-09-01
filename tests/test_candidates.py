@@ -1,0 +1,260 @@
+"""Candidate generation tests (spec sections 24 and 25)."""
+
+from __future__ import annotations
+
+from datetime import date, datetime, timedelta, timezone
+from decimal import Decimal
+
+import pytest
+
+from src.broker.occ import build_option_symbol
+from src.rolldesk.candidates import (
+    ChainContract,
+    build_iron_condors,
+    build_put_credit_spreads,
+    eligible_expiries,
+    generate_candidates,
+)
+from src.rolldesk.structures import derive_geometry
+from src.types import Permission
+
+NOW = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
+TODAY = NOW.date()
+SPOT = Decimal("640")
+
+
+def contract(strike, right, expiry, bid, ask, delta, age_ms=100):
+    strike = Decimal(str(strike))
+    return ChainContract(
+        symbol=build_option_symbol("SPY", expiry, right, strike),
+        underlying="SPY",
+        expiry=expiry,
+        strike=strike,
+        right=right,
+        bid=bid,
+        ask=ask,
+        ts=NOW - timedelta(milliseconds=age_ms),
+        delta=delta,
+    )
+
+
+def synthetic_chain(expiry: date, spot: Decimal = SPOT, step: int = 1):
+    """A plausible SPY chain: price and |delta| fall as strikes move away from spot.
+
+    Prices are shaped so the further-OTM leg is always cheaper than the nearer
+    one, which is what makes a credit spread produce a credit.
+    """
+    chain = []
+    for offset in range(-15, 16, step):
+        strike = spot + Decimal(offset)
+        distance = abs(offset)
+        # Puts: cheaper and lower delta the further below spot.
+        put_mid = max(0.05, 3.0 - 0.18 * (offset if offset > 0 else -offset) if offset <= 0 else 3.0 + 0.2 * offset)
+        put_mid = max(0.05, 3.0 - 0.18 * distance) if offset <= 0 else 3.0 + 0.25 * distance
+        put_delta = -max(0.02, 0.50 - 0.032 * distance) if offset <= 0 else -min(0.95, 0.50 + 0.03 * distance)
+        chain.append(contract(strike, "P", expiry, round(put_mid - 0.02, 2), round(put_mid + 0.02, 2), put_delta))
+        # Calls: mirror image.
+        call_mid = max(0.05, 3.0 - 0.18 * distance) if offset >= 0 else 3.0 + 0.25 * distance
+        call_delta = max(0.02, 0.50 - 0.032 * distance) if offset >= 0 else min(0.95, 0.50 + 0.03 * distance)
+        chain.append(contract(strike, "C", expiry, round(call_mid - 0.02, 2), round(call_mid + 0.02, 2), call_delta))
+    return chain
+
+
+EXPIRY = TODAY + timedelta(days=4)
+
+
+@pytest.fixture
+def chain():
+    return synthetic_chain(EXPIRY)
+
+
+def income(strategies=("put_credit_spread", "iron_condor")):
+    return Permission("INCOME", tuple(strategies), 1, ("test",))
+
+
+# --- expiry filtering --------------------------------------------------------
+
+
+def test_only_expiries_inside_the_openable_window_are_used(config):
+    chain = []
+    for days in (0, 1, 2, 4, 7, 8, 20):
+        chain += synthetic_chain(TODAY + timedelta(days=days))
+    eligible = eligible_expiries(chain, config, TODAY)
+    offsets = sorted((e - TODAY).days for e in eligible)
+    assert offsets == [2, 4, 7]  # 0 and 1 are in the flatten zone; 8 and 20 too far
+
+
+def test_forced_flatten_zone_expiries_are_excluded(config):
+    chain = synthetic_chain(TODAY + timedelta(days=1))
+    assert eligible_expiries(chain, config, TODAY) == []
+
+
+# --- put credit spreads ------------------------------------------------------
+
+
+def test_builds_valid_put_credit_spreads(chain):
+    tickets = build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW)
+    assert tickets
+    for t in tickets:
+        assert t.structure_type == "put_credit_spread"
+        assert len(t.legs) == 2
+        derive_geometry(t.legs)  # must not raise
+
+
+def test_put_credit_spread_sells_the_higher_strike(chain):
+    for t in build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW):
+        geometry = derive_geometry(t.legs)
+        assert geometry.short_strikes[0] > geometry.long_strikes[0]
+
+
+def test_every_candidate_carries_a_positive_credit(chain):
+    for t in build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW):
+        assert t.credit_mid > 0
+        assert t.credit_mid < t.width  # otherwise risk is not defined
+
+
+def test_max_loss_matches_width_minus_credit(chain):
+    for t in build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW):
+        assert t.max_loss == pytest.approx((t.width - t.credit_mid) * 100, abs=0.02)
+
+
+def test_candidates_propose_one_lot(chain):
+    """Sizing is the Risk Officer's job; the builder never proposes more than one."""
+    for t in build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW):
+        assert t.proposed_lots == 1
+
+
+def test_dte_is_computed_not_copied(chain):
+    for t in build_put_credit_spreads(chain, EXPIRY, "INCOME", TODAY, NOW):
+        assert t.dte == (EXPIRY - TODAY).days
+
+
+# --- iron condors ------------------------------------------------------------
+
+
+def test_builds_valid_iron_condors(chain):
+    tickets = build_iron_condors(chain, EXPIRY, "INCOME", TODAY, NOW)
+    assert tickets
+    for t in tickets:
+        assert t.structure_type == "iron_condor"
+        assert len(t.legs) == 4
+        derive_geometry(t.legs)
+
+
+def test_iron_condor_shorts_straddle_the_spot(chain):
+    for t in build_iron_condors(chain, EXPIRY, "INCOME", TODAY, NOW):
+        geometry = derive_geometry(t.legs)
+        short_put, short_call = geometry.short_strikes
+        assert short_put < short_call
+
+
+# --- liquidity filtering -----------------------------------------------------
+
+
+def test_one_sided_markets_are_excluded(chain):
+    poisoned = [
+        ChainContract(c.symbol, c.underlying, c.expiry, c.strike, c.right, 0.0, c.ask, c.ts, c.delta)
+        if c.right == "P"
+        else c
+        for c in chain
+    ]
+    assert build_put_credit_spreads(poisoned, EXPIRY, "INCOME", TODAY, NOW) == []
+
+
+def test_very_wide_markets_are_excluded(chain):
+    wide = [
+        ChainContract(c.symbol, c.underlying, c.expiry, c.strike, c.right, 0.01, 5.0, c.ts, c.delta)
+        for c in chain
+    ]
+    assert build_put_credit_spreads(wide, EXPIRY, "INCOME", TODAY, NOW) == []
+
+
+def test_a_chain_with_no_deltas_yields_nothing(chain):
+    """Strike selection is delta-driven; without deltas the builder stands down."""
+    undeltaed = [
+        ChainContract(c.symbol, c.underlying, c.expiry, c.strike, c.right, c.bid, c.ask, c.ts, None)
+        for c in chain
+    ]
+    assert build_put_credit_spreads(undeltaed, EXPIRY, "INCOME", TODAY, NOW) == []
+
+
+# --- the full generator ------------------------------------------------------
+
+
+def test_generates_a_shortlist(chain, config):
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert 1 <= len(tickets) <= 3
+
+
+def test_shortlist_is_diverse(chain, config):
+    """Spec section 25: not three effectively identical tickets."""
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    if len(tickets) > 1:
+        signatures = {(round(t.short_delta, 2), t.width) for t in tickets}
+        assert len(signatures) == len(tickets)
+
+
+def test_no_two_candidates_share_the_same_legs(chain, config):
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    leg_sets = [tuple(leg.symbol for leg in t.legs) for t in tickets]
+    assert len(set(leg_sets)) == len(leg_sets)
+
+
+def test_every_candidate_clears_the_credit_floor(chain, config):
+    for t in generate_candidates(chain, income(), config, TODAY, NOW):
+        assert t.credit_mid / t.width >= config.min_credit_to_width
+
+
+def test_every_candidate_is_structurally_valid(chain, config):
+    for t in generate_candidates(chain, income(), config, TODAY, NOW):
+        geometry = derive_geometry(t.legs)
+        assert geometry.structure_type == t.structure_type
+
+
+def test_blocked_regime_produces_no_candidates(chain, config):
+    """MOMENTUM and EVENT are not special-cased; they simply permit nothing."""
+    blocked = Permission("MOMENTUM", (), 0, ("adx_at_or_above_threshold",))
+    assert generate_candidates(chain, blocked, config, TODAY, NOW) == []
+
+
+def test_permission_limits_which_structures_are_built(chain, config):
+    only_pcs = income(strategies=("put_credit_spread",))
+    tickets = generate_candidates(chain, only_pcs, config, TODAY, NOW)
+    assert tickets
+    assert all(t.structure_type == "put_credit_spread" for t in tickets)
+
+
+def test_empty_chain_produces_no_candidates(config):
+    assert generate_candidates([], income(), config, TODAY, NOW) == []
+
+
+def test_ticket_ids_are_stable_and_unique(chain, config):
+    first = generate_candidates(chain, income(), config, TODAY, NOW)
+    second = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert [t.ticket_id for t in first] == [t.ticket_id for t in second]
+    assert len({t.ticket_id for t in first}) == len(first)
+
+
+def test_candidates_survive_the_risk_officer(chain, config):
+    """End to end: a generated candidate must be capable of reaching ALLOW."""
+    from src.risk.officer import evaluate
+    from src.types import Account, Book
+
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert tickets
+
+    quotes = {c.symbol: c.as_quote() for c in chain}
+    account = Account(
+        account_id="DEV-1",
+        allowed_account_id="DEV-1",
+        equity=100_000.0,
+        cash=100_000.0,
+        buying_power=100_000.0,
+        options_level=3,
+        start_of_day_equity=100_000.0,
+        high_water_mark=100_000.0,
+    )
+    book = Book(quotes=quotes, now=NOW, market_open=True, minutes_to_close=180)
+
+    verdicts = [evaluate(t, book, account, income(), config) for t in tickets]
+    assert any(v.allowed for v in verdicts), [v.reasons for v in verdicts]
