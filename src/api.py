@@ -23,6 +23,23 @@ from .startup import run_gate
 app = FastAPI(title="OptionGenome", docs_url="/api/docs", redoc_url=None)
 
 DASHBOARD = Path(__file__).parent / "dashboard.html"
+DECK = Path(__file__).parent.parent / "docs" / "deck.html"
+
+#: The deck source is a document fragment: title, style and content, with no
+#: charset declaration of its own. Served raw that renders as mojibake, so the
+#: skeleton is supplied here rather than duplicating the deck into a second file.
+DECK_SKELETON = """<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="description" content="OptionGenome - an autonomous defined-risk options desk on Alpaca paper trading.">
+<style>html{{color-scheme:light dark}}body{{margin:0}}img{{max-width:100%}}</style>
+</head>
+<body>
+{body}
+</body>
+</html>"""
 
 
 def _journal() -> Journal:
@@ -117,6 +134,14 @@ def api_summary() -> Any:
         "top_deny_reasons": deny_reasons.most_common(8),
         "last_updated": entries[-1]["ts"] if entries else None,
     }
+
+
+@app.get("/deck", response_class=HTMLResponse)
+def deck() -> HTMLResponse:
+    """The submission slide deck, on the same origin as the live demo."""
+    if not DECK.exists():
+        return HTMLResponse("<h1>Deck not found</h1>", status_code=404)
+    return HTMLResponse(DECK_SKELETON.format(body=DECK.read_text(encoding="utf-8")))
 
 
 @app.get("/", response_class=HTMLResponse)
