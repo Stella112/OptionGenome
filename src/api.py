@@ -168,6 +168,41 @@ def api_summary() -> Any:
     }
 
 
+@app.get("/api/equity")
+def api_equity(limit: int = 240) -> Any:
+    """Reconciled equity over time, for the dashboard sparkline.
+
+    Points come from RECONCILE entries, which are the desk's own reads of the
+    broker rather than anything it inferred.
+    """
+    points = []
+    for entry in _journal().tail(6000):
+        if entry.get("event") != "RECONCILE":
+            continue
+        equity = entry.get("equity")
+        if equity is None:
+            continue
+        points.append({"ts": entry.get("ts"), "equity": float(equity)})
+    points = points[-limit:]
+    values = [p["equity"] for p in points]
+    return {
+        "points": points,
+        "first": values[0] if values else None,
+        "last": values[-1] if values else None,
+        "low": min(values) if values else None,
+        "high": max(values) if values else None,
+        "change": (values[-1] - values[0]) if len(values) > 1 else 0.0,
+    }
+
+
+@app.get("/api/lifecycle")
+def api_lifecycle(limit: int = 40) -> Any:
+    """Recent lifecycle actions, so the dashboard can show management, not only entry."""
+    wanted = {"TAKE_PROFIT", "DEFEND", "ROLL", "FLATTEN", "EXPIRE"}
+    out = [e for e in _journal().tail(4000) if e.get("event") in wanted]
+    return {"entries": list(reversed(out[-limit:]))}
+
+
 @app.get("/deck", response_class=HTMLResponse)
 def deck() -> HTMLResponse:
     """The submission slide deck, on the same origin as the live demo."""
