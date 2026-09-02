@@ -339,8 +339,8 @@
     <h1>OptionGenome</h1>
     <p class="lead">An autonomous options desk where the model is the <em>least-trusted</em> component.</p>
     <div class="stats">
-      <div class="stat"><div class="v">133</div><div class="k">decisions, day one</div></div>
-      <div class="stat"><div class="v" style="color:var(--deny)">130</div><div class="k">refused</div></div>
+      <div class="stat"><div class="v" data-live="decisions">133</div><div class="k">decisions logged</div></div>
+      <div class="stat"><div class="v" style="color:var(--deny)" data-live="refused">130</div><div class="k">refused</div></div>
       <div class="stat"><div class="v">614</div><div class="k">tests</div></div>
       <div class="stat"><div class="v">72</div><div class="k">MCP tools</div></div>
     </div>
@@ -419,9 +419,9 @@
 
   <section class="slide" data-index="06">
     <div class="eyebrow">Evidence</div>
-    <h2>On day one it refused 130 of 133 decisions.</h2>
+    <h2>It has refused <span data-live="refused">130</span> of <span data-live="decisions">133</span> decisions.</h2>
     <div class="figure">
-      <div class="n deny">130</div>
+      <div class="n deny" data-live="refused">130</div>
       <div class="cap">refusals, each with a machine-readable reason, in an append-only journal</div>
     </div>
     <div class="term">
@@ -483,7 +483,7 @@
       <div class="stat"><div class="v">5,256</div><div class="k">lines of source</div></div>
       <div class="stat"><div class="v">4,435</div><div class="k">lines of tests</div></div>
       <div class="stat"><div class="v">614</div><div class="k">tests passing</div></div>
-      <div class="stat"><div class="v">685</div><div class="k">journal events</div></div>
+      <div class="stat"><div class="v" data-live="events">685</div><div class="k">journal events</div></div>
     </div>
     <p>A systemd service on a VPS: starts on boot, restarts on failure, reconciles from the broker every pass rather than trusting what it remembers.</p>
     <div class="links">
@@ -495,6 +495,33 @@
 
 </div>
 
+<script>
+  // The deck is served from the same origin as the desk's API, so the counts
+  // that change come from the desk itself. Hardcoding them meant a deck
+  // claiming 133 decisions beside a dashboard showing 855.
+  //
+  // The written values stay in the markup as the fallback: opened offline, or
+  // exported to PDF, the deck still reads correctly rather than showing blanks.
+  (function () {
+    fetch("/api/summary", { cache: "no-store" })
+      .then(function (r) { return r.ok ? r.json() : null; })
+      .then(function (s) {
+        if (!s) return;
+        var live = {
+          refused: s.denies,
+          decisions: (s.denies || 0) + (s.allows || 0),
+          events: s.total_events,
+        };
+        Object.keys(live).forEach(function (key) {
+          if (live[key] == null) return;
+          document.querySelectorAll('[data-live="' + key + '"]').forEach(function (el) {
+            el.textContent = Number(live[key]).toLocaleString();
+          });
+        });
+      })
+      .catch(function () { /* keep the written figures */ });
+  })();
+</script>
 <script>
   (function () {
     var rail = document.getElementById("rail");
