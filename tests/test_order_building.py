@@ -286,3 +286,38 @@ def test_submit_still_asserts_the_account_after_verification(reference):
     desk.verify_legs_format(command)
     with pytest.raises(SafetyViolation, match="account assertion failed"):
         desk.submit(command, "JUDGE-9")
+
+
+# --- limit price sign on the wire (the fill-leak bug) -----------------------
+
+
+def test_an_opening_credit_goes_on_the_wire_negative(reference):
+    """Alpaca: 'A negative value signifies a credit.' Sent positive, a credit
+    limit became a debit cap that any credit satisfies, so every entry filled
+    at whatever the market offered - 0.02 to 0.16 below the limit we set."""
+    command = cli(reference).build_submit_command(make_ticket(credit=1.00), allow(), "DEV-1")
+    wire = float(argv_value(command.argv, "--limit-price"))
+    assert wire < 0
+    assert wire == pytest.approx(-0.95)  # mid 1.00 less the 5% concession, negated
+    assert command.limit_price == pytest.approx(0.95)  # magnitude kept for display
+    assert command.wire_limit_price == pytest.approx(-0.95)
+
+
+def test_a_closing_debit_goes_on_the_wire_positive(reference):
+    command = cli(reference).build_close_command(make_ticket(), 1, 0.40, "DEV-1")
+    wire = float(argv_value(command.argv, "--limit-price"))
+    assert wire > 0
+    assert wire == pytest.approx(0.42)
+    assert command.wire_limit_price == pytest.approx(0.42)
+
+
+def test_dry_run_preserves_the_signed_limit(reference):
+    command = cli(reference).build_submit_command(make_ticket(), allow(), "DEV-1")
+    assert command.with_dry_run().wire_limit_price == command.wire_limit_price
+    assert argv_value(command.with_dry_run().argv, "--limit-price").startswith("-")
+
+
+def test_a_credit_limit_is_never_zero_or_positive_on_the_wire(reference):
+    """The minimum-tick floor must not flip the sign."""
+    command = cli(reference).build_submit_command(make_ticket(credit=0.01), allow(), "DEV-1")
+    assert float(argv_value(command.argv, "--limit-price")) <= -0.01

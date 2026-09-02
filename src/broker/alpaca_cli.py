@@ -195,9 +195,10 @@ class OrderCommand:
     argv: tuple[str, ...]
     ticket_id: str
     client_order_id: str
-    limit_price: float
+    limit_price: float  # magnitude, for journalling and display
     lots: int
     intent: str  # "open" | "close"
+    wire_limit_price: float = 0.0  # signed, exactly as sent to the broker
 
     @property
     def shell(self) -> str:
@@ -213,6 +214,7 @@ class OrderCommand:
             limit_price=self.limit_price,
             lots=self.lots,
             intent=self.intent,
+            wire_limit_price=self.wire_limit_price,
         )
 
 
@@ -321,6 +323,14 @@ class AlpacaCLI:
         limit_price = limit_price_for_credit(ticket.credit_mid)
         coid = client_order_id or f"og-{ticket.ticket_id}-{lots}"
 
+        # Alpaca's multi-leg limit is signed by cash flow (POST /v2/orders):
+        # "A positive value indicates a debit... A negative value signifies a
+        # credit." Sending a credit as a positive number told the broker we
+        # would PAY up to that much, which any credit satisfies -- so every
+        # opening order filled at whatever the market offered, 0.02 to 0.16
+        # below the limit we believed we had set. A credit goes out negative.
+        wire_limit = -limit_price
+
         argv = (
             self.binary,
             "order",
@@ -334,7 +344,7 @@ class AlpacaCLI:
             "--time-in-force",
             TIME_IN_FORCE,
             "--limit-price",
-            f"{limit_price:.2f}",
+            f"{wire_limit:.2f}",
             "--legs",
             encode_legs(ticket.legs),
             "--client-order-id",
@@ -348,6 +358,7 @@ class AlpacaCLI:
             limit_price=limit_price,
             lots=lots,
             intent="open",
+            wire_limit_price=wire_limit,
         )
 
     def build_close_command(
@@ -374,6 +385,8 @@ class AlpacaCLI:
 
         limit_price = limit_price_to_close(cost_to_close_mid)
         coid = client_order_id or f"og-close-{ticket.ticket_id}-{lots}"
+        # Buying the structure back is a debit, which Alpaca takes as positive.
+        wire_limit = limit_price
 
         argv = (
             self.binary,
@@ -402,6 +415,7 @@ class AlpacaCLI:
             limit_price=limit_price,
             lots=lots,
             intent="close",
+            wire_limit_price=wire_limit,
         )
 
     # --- verification and execution -----------------------------------------
