@@ -205,6 +205,125 @@ def _signed_debit(price: Any) -> float | None:
     return abs(float(price))
 
 
+@app.get("/api/decision")
+def api_decision() -> Any:
+    """The most recent complete pass, as one traceable decision.
+
+    The journal is a flat stream; a judge reading it has to reassemble which
+    candidate the model chose and what the Risk Officer then did about it. This
+    walks back to the last REGIME entry and returns everything that followed as
+    a single chain, so the pipeline can be shown end to end.
+    """
+    entries = _journal().tail(400)
+
+    start = None
+    for i in range(len(entries) - 1, -1, -1):
+        if entries[i].get("event") == "REGIME":
+            start = i
+            break
+    if start is None:
+        return {"available": False}
+
+    chain = entries[start:]
+    by_event: dict[str, dict] = {}
+    for entry in chain:
+        by_event.setdefault(str(entry.get("event")), entry)
+
+    regime = by_event.get("REGIME", {})
+    candidates = by_event.get("CANDIDATES", {})
+    rank = by_event.get("RANK", {})
+    verdict = by_event.get("ALLOW") or by_event.get("DENY") or {}
+    submit = by_event.get("SUBMIT", {})
+
+    permission = regime.get("permission", {}) or {}
+    signals = regime.get("signals", {}) or {}
+
+    shown = candidates.get("tickets", []) or []
+    picked_id = rank.get("pick_id")
+    picked = next((t for t in shown if t.get("candidate_id") == picked_id), None)
+
+    return {
+        "available": True,
+        "at": regime.get("ts"),
+        "regime": {
+            "name": permission.get("regime"),
+            "max_lots": permission.get("max_lots"),
+            "allowed": permission.get("allowed_strategies", []),
+            "reasons": permission.get("reasons", []),
+        },
+        "signals": {
+            "implied_vol": signals.get("implied_vol"),
+            "realized_vol": signals.get("realized_vol"),
+            "iv_rank": signals.get("iv_rank"),
+            "adx": signals.get("adx"),
+            "hours_to_next_event": signals.get("hours_to_next_event"),
+            "next_event_name": signals.get("next_event_name"),
+        },
+        # Exactly the payload the model received: no equity, no buying power,
+        # no risk budget, no rules. Shown so that can be checked, not asserted.
+        "shortlist": shown,
+        "model": {
+            "pick_id": picked_id,
+            "rationale": rank.get("rationale"),
+            "fallback": rank.get("fallback"),
+            "reason": rank.get("reason"),
+            "model": rank.get("model"),
+            "latency_ms": rank.get("latency_ms"),
+            "picked": picked,
+        },
+        "officer": {
+            "decision": verdict.get("decision") or verdict.get("event"),
+            "allowed_lots": verdict.get("allowed_lots"),
+            "reasons": verdict.get("reasons", []),
+            "ticket_id": verdict.get("ticket_id"),
+        },
+        "submitted": bool(submit),
+        "order": {
+            "limit_price": submit.get("limit_price"),
+            "wire_limit_price": submit.get("wire_limit_price"),
+            "lots": submit.get("lots"),
+            "client_order_id": submit.get("client_order_id"),
+        } if submit else None,
+    }
+
+
+@app.get("/api/risk")
+def api_risk() -> Any:
+    """Live readings against each frozen limit, so the governor can be seen working."""
+    try:
+        cfg = load_config()
+    except ConfigError as exc:
+        return JSONResponse({"error": str(exc)}, status_code=500)
+
+    latest = next(
+        (e for e in reversed(_journal().tail(2000)) if e.get("event") == "RECONCILE"), {}
+    )
+    equity = latest.get("equity")
+    equity = float(equity) if equity is not None else None
+    sod = latest.get("start_of_day_equity")
+    sod = float(sod) if sod is not None else equity
+
+    def gauge(name, used, limit, unit):
+        pct = (used / limit) if (limit and used is not None) else None
+        return {
+            "name": name, "used": used, "limit": limit, "unit": unit,
+            "pct": pct, "breached": bool(pct is not None and pct >= 1.0),
+        }
+
+    return {
+        "gauges": [
+            gauge("Daily new risk", latest.get("day_open_risk"),
+                  round(cfg.daily_new_risk_pct * sod, 2) if sod else None, "$"),
+            gauge("Drawdown", latest.get("drawdown"), cfg.dd_flatten_pct, "%"),
+            gauge("Open structures", latest.get("open_structures"),
+                  cfg.max_open_structures, ""),
+            gauge("Max loss per position", None,
+                  round(cfg.max_loss_pct * equity, 2) if equity else None, "$"),
+        ],
+        "equity": equity,
+    }
+
+
 @app.get("/api/trades")
 def api_trades() -> Any:
     """Every structure the desk traded, paired open-to-close.

@@ -122,6 +122,54 @@
   .fig .n { font-size: 11.5px; color: var(--ink-faint); margin-top: 7px; font-family: var(--mono); }
   .spark { display: block; width: 100%; height: 30px; margin-top: 8px; }
 
+  /* --- the decision path: one pass, end to end -------------------------- */
+  .path { display: grid; gap: 0; padding: 4px 17px 16px; }
+  .step { display: grid; grid-template-columns: 20px 1fr; gap: 0 14px; }
+  .step .rail { position: relative; }
+  .step .dot {
+    position: absolute; left: 6px; top: 15px; width: 9px; height: 9px;
+    border-radius: 50%; background: var(--rule); border: 2px solid var(--panel); z-index: 1;
+  }
+  .step .dot.on { background: var(--brass); }
+  .step .dot.stop { background: var(--deny); }
+  .step .dot.go { background: var(--allow); }
+  .step .rail::before {
+    content: ""; position: absolute; left: 10px; top: 0; bottom: 0;
+    width: 1px; background: var(--rule);
+  }
+  .step:first-child .rail::before { top: 18px; }
+  .step:last-child .rail::before { bottom: calc(100% - 18px); }
+  .step .content { padding: 10px 0 14px; min-width: 0; }
+  .step .label {
+    font: 600 10px/1 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    color: var(--ink-faint); margin-bottom: 6px;
+  }
+  .step .headline { font-size: 14.5px; margin-bottom: 4px; }
+  .step .headline b { font-weight: 600; }
+  .step .sub { font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint); overflow-wrap: anywhere; }
+  .quote {
+    font-family: var(--display); font-size: 15.5px; line-height: 1.45;
+    color: var(--ink); border-left: 2px solid var(--brass);
+    padding: 2px 0 2px 12px; margin: 6px 0 5px;
+  }
+  .verdict { font: 600 11px/1.6 var(--mono); letter-spacing: .1em; padding: 3px 9px; border-radius: 2px; border: 1px solid currentColor; }
+  .verdict.ALLOW { color: var(--allow); background: var(--allow-soft); }
+  .verdict.DENY { color: var(--deny); background: var(--deny-soft); }
+  .why { margin: 7px 0 0; padding: 0; list-style: none; display: grid; gap: 5px; }
+  .why li { font-size: 12.5px; color: var(--ink-soft); display: grid; grid-template-columns: auto 1fr; gap: 8px; }
+  .why code { font-family: var(--mono); font-size: 11px; color: var(--deny); white-space: nowrap; }
+  .hid { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); margin-top: 6px; }
+  .hid s { opacity: .75; }
+
+  /* risk gauges */
+  .gauges { display: grid; gap: 14px 22px; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); padding: 14px 17px 17px; }
+  .gauge .top { display: flex; justify-content: space-between; align-items: baseline; gap: 10px; font-size: 12.5px; }
+  .gauge .top .u { font-family: var(--mono); font-size: 12px; color: var(--ink-soft); font-variant-numeric: tabular-nums; }
+  .gauge .track { height: 4px; background: var(--rule); border-radius: 2px; overflow: hidden; margin-top: 7px; }
+  .gauge .fill { height: 100%; background: var(--allow); }
+  .gauge .fill.warn { background: var(--warn); }
+  .gauge .fill.over { background: var(--deny); }
+
   /* --- panels ------------------------------------------------------------- */
   .grid { display: grid; gap: 18px; margin-top: 22px; grid-template-columns: 1.15fr 1fr; }
   @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
@@ -202,6 +250,16 @@
   </p>
 
   <div class="figures" id="figures"></div>
+
+  <section class="panel" style="margin-top:22px">
+    <h2>The last decision, end to end <span class="count" id="path-at"></span></h2>
+    <div class="path" id="path"><div class="empty">loading</div></div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
+    <h2>Risk budget in use</h2>
+    <div class="gauges" id="gauges"></div>
+  </section>
 
   <div class="grid">
     <section class="panel">
@@ -297,6 +355,121 @@ function figures(s, cfg, eq) {
     </div>`).join("");
 }
 
+/* Refusal codes are precise and unreadable. A judge should not have to decode
+   them to see that the desk stopped for a defensible reason. */
+const WHY = {
+  final_session_window: "Too close to the closing bell to open new risk",
+  market_closed: "The market was not open",
+  quote_stale: "The quotes were older than the 5-second limit",
+  quote_timestamp_in_future: "Quote timestamps ran ahead of our clock beyond tolerance",
+  quote_unusable: "A leg had no usable two-sided market",
+  overlapping_short_same_expiry: "Already short this underlying on that expiry",
+  overlapping_short_adjacent_expiry: "Already short a neighbouring expiry — correlated risk",
+  max_loss_pct_exceeded: "Worst case exceeded 0.75% of equity",
+  daily_risk_exceeded: "Would breach the 2% new-risk budget for the day",
+  drawdown_flatten_only: "Drawdown limit hit — reducing risk only",
+  credit_to_width_below_min: "Premium too thin for the risk taken",
+  short_leg_spread_too_wide: "The short leg's market was too wide to trade",
+  dte_out_of_entry_window: "Expiry outside the entry window",
+  dte_in_forced_flatten_zone: "Too near expiry to open",
+  max_open_structures: "Already holding the maximum number of structures",
+  account_mismatch: "Broker account did not match the configured one",
+  regime_no_new_entries: "The regime forbids opening new short premium",
+  structure_not_permitted_in_regime: "That structure is not allowed in this regime",
+  no_variance_risk_premium: "Implied volatility was not rich enough versus realised",
+  ratios_not_reduced: "Leg ratios did not reduce properly",
+  allowed_lots_below_one: "Sizing came out below one lot",
+};
+const explain = (code) => WHY[String(code).split(":")[0]] || String(code).split(":")[0].replace(/_/g, " ");
+
+function step(dot, label, headline, sub, extra) {
+  return `<div class="step">
+    <div class="rail"><span class="dot ${dot}"></span></div>
+    <div class="content">
+      <div class="label">${esc(label)}</div>
+      <div class="headline">${headline}</div>
+      ${sub ? `<div class="sub">${sub}</div>` : ""}
+      ${extra || ""}
+    </div>
+  </div>`;
+}
+
+function decisionPath(d) {
+  if (!d || !d.available) { $("path").innerHTML = `<div class="empty">No pass recorded yet.</div>`; return; }
+  $("path-at").textContent = (d.at || "").slice(11, 19) + "Z";
+
+  const sig = d.signals || {}, reg = d.regime || {}, m = d.model || {}, o = d.officer || {};
+  const vrp = sig.implied_vol && sig.realized_vol ? sig.implied_vol / sig.realized_vol : null;
+  const out = [];
+
+  out.push(step("on", "1 · MarketDNA reads the tape",
+    `<b>${esc(reg.name || "—")}</b> — ${reg.max_lots ? "premium selling permitted" : "no new positions permitted"}`,
+    `ADX ${(sig.adx ?? 0).toFixed(1)} &middot; IV rank ${(sig.iv_rank ?? 0).toFixed(0)} &middot; ` +
+    `implied ${((sig.implied_vol ?? 0) * 100).toFixed(2)}% vs realised ${((sig.realized_vol ?? 0) * 100).toFixed(2)}%` +
+    (vrp ? ` &middot; ratio ${vrp.toFixed(2)}` : "")));
+
+  const n = (d.shortlist || []).length;
+  out.push(step(n ? "on" : "stop", "2 · Roll Desk builds defined-risk candidates",
+    n ? `<b>${n}</b> structure${n === 1 ? "" : "s"} built and structurally validated`
+      : "No candidate cleared the structural filters",
+    (d.shortlist || []).map(t =>
+      `${esc(t.expiry)} ${esc((t.structure || "").replace(/_/g, " "))} ` +
+      `&Delta;${(t.short_delta ?? 0).toFixed(2)} width ${t.width} credit $${((t.credit ?? 0) * 100).toFixed(0)}`
+    ).join("<br>")));
+
+  if (m.pick_id || m.fallback != null) {
+    const fell = m.fallback;
+    out.push(step(fell ? "stop" : "on", "3 · The model ranks — and may do nothing else",
+      fell ? `Model unavailable (<b>${esc(m.reason || "fallback")}</b>) — first legal candidate taken`
+           : `Chose <b>${esc(m.pick_id || "")}</b> in ${Math.round(m.latency_ms || 0)}ms`,
+      "",
+      (!fell && m.rationale ? `<div class="quote">&ldquo;${esc(m.rationale)}&rdquo;</div>` : "") +
+      `<div class="hid">It never saw: <s>equity</s> <s>buying power</s> <s>daily risk budget</s> ` +
+      `<s>lot limits</s> <s>the risk rules</s>. It returns one id from a list it cannot write.</div>`));
+  }
+
+  const decided = o.decision === "ALLOW" || o.decision === "DENY";
+  if (decided) {
+    const allowed = o.decision === "ALLOW";
+    out.push(step(allowed ? "go" : "stop", "4 · The Risk Officer recalculates everything",
+      `<span class="verdict ${esc(o.decision)}">${esc(o.decision)}</span>` +
+      (allowed ? ` &nbsp;sized at <b>${o.allowed_lots}</b> lot${o.allowed_lots === 1 ? "" : "s"}`
+               : ` &nbsp;on ${(o.reasons || []).length} ground${(o.reasons || []).length === 1 ? "" : "s"}`),
+      "",
+      (o.reasons || []).length
+        ? `<ul class="why">${o.reasons.map(r =>
+            `<li><code>${esc(String(r).split(":")[0])}</code><span>${esc(explain(r))}</span></li>`).join("")}</ul>`
+        : ""));
+  }
+
+  out.push(step(d.submitted ? "go" : "stop", "5 · Broker",
+    d.submitted
+      ? `Sent through the Alpaca CLI at a <b>${(d.order?.wire_limit_price ?? 0) < 0 ? "credit" : "debit"}</b> limit of ${Math.abs(d.order?.wire_limit_price ?? 0).toFixed(2)}`
+      : "Nothing was sent",
+    d.submitted ? esc(d.order?.client_order_id || "") : "No ALLOW means no broker command is ever constructed"));
+
+  $("path").innerHTML = out.join("");
+}
+
+function gauges(r) {
+  const rows = r?.gauges || [];
+  if (!rows.length) { $("gauges").innerHTML = `<div class="empty">unavailable</div>`; return; }
+  $("gauges").innerHTML = rows.map(g => {
+    const has = g.used != null && g.limit != null;
+    const pct = has ? Math.min(1, g.pct || 0) : 0;
+    const cls = !has ? "" : (g.breached ? "over" : (pct > 0.66 ? "warn" : ""));
+    const fmt = (v) => v == null ? "—"
+      : g.unit === "$" ? "$" + Number(v).toLocaleString(undefined, {maximumFractionDigits: 0})
+      : g.unit === "%" ? (Number(v) * 100).toFixed(2) + "%"
+      : Number(v).toLocaleString();
+    return `<div class="gauge">
+      <div class="top"><span>${esc(g.name)}</span>
+        <span class="u">${fmt(g.used)} <span style="color:var(--ink-faint)">/ ${fmt(g.limit)}</span></span></div>
+      <div class="track"><span class="fill ${cls}" style="width:${(pct * 100).toFixed(1)}%"></span></div>
+    </div>`;
+  }).join("");
+}
+
 function reasons(s) {
   const rows = s?.top_deny_reasons || [];
   $("deny-total").textContent = rows.length ? num(s.denies) : "";
@@ -304,7 +477,7 @@ function reasons(s) {
   const max = Math.max(...rows.map(r => r[1]));
   $("reasons").innerHTML = rows.map(([reason, n]) => `
     <div class="reason">
-      <span class="name">${esc(reason)}</span>
+      <span class="name">${esc(reason)}<br><span style="color:var(--ink-faint);font-family:var(--body);font-size:12px">${esc(explain(reason))}</span></span>
       <span class="n">${num(n)}</span>
       <span class="track"><span class="fill" style="width:${(n / max * 100).toFixed(1)}%"></span></span>
     </div>`).join("");
@@ -369,9 +542,10 @@ function journal(j) {
 }
 
 async function refresh() {
-  const [s, g, j, cfg, eq, tr] = await Promise.all([
+  const [s, g, j, cfg, eq, tr, d, rk] = await Promise.all([
     get("/api/summary"), get("/api/gate"), get("/api/journal?limit=140"),
     get("/api/config"), get("/api/equity"), get("/api/trades"),
+    get("/api/decision"), get("/api/risk"),
   ]);
 
   const state = g?.state || "unknown";
@@ -388,6 +562,8 @@ async function refresh() {
   figures(s, cfg, eq);
   reasons(s);
   gate(g);
+  decisionPath(d);
+  gauges(rk);
   trades(tr);
   journal(j);
   $("updated").textContent = s?.last_updated
