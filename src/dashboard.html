@@ -151,6 +151,21 @@
   .check.fail .label { color: var(--deny); }
   .check .label { color: var(--ink-soft); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
+  /* trades: each structure across its whole life, entry to exit */
+  .trade { display: grid; grid-template-columns: 92px 1fr 96px 96px 104px; gap: 4px 14px; padding: 12px 0; border-bottom: 1px solid var(--rule); align-items: baseline; }
+  .trade:last-child { border-bottom: 0; }
+  .trade .exp { font-family: var(--mono); font-size: 12.5px; }
+  .trade .kind { font-family: var(--mono); font-size: 11px; color: var(--ink-faint); letter-spacing: .06em; text-transform: uppercase; }
+  .trade .px { font-family: var(--mono); font-size: 12.5px; font-variant-numeric: tabular-nums; color: var(--ink-soft); }
+  .trade .pnl { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
+  .trade .pnl.up { color: var(--allow); }
+  .trade .pnl.down { color: var(--deny); }
+  .trade .legs { grid-column: 2 / -1; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); overflow-wrap: anywhere; }
+  .badge { font: 600 9.5px/1.6 var(--mono); letter-spacing: .1em; padding: 2px 7px; border-radius: 2px; border: 1px solid currentColor; }
+  .badge.open { color: var(--brass); }
+  .badge.closed { color: var(--ink-faint); }
+  @media (max-width: 720px) { .trade { grid-template-columns: 1fr auto; } .trade .px { display: none; } }
+
   /* journal */
   .entry { display: grid; grid-template-columns: 62px 108px 1fr; gap: 10px; padding: 8px 0; border-bottom: 1px solid var(--rule); font-size: 12.5px; }
   .entry:last-child { border-bottom: 0; }
@@ -199,6 +214,11 @@
       <div class="gate" id="gate"></div>
     </section>
   </div>
+
+  <section class="panel" style="margin-top:18px">
+    <h2>Trades <span class="count" id="trade-summary"></span></h2>
+    <div class="body scroll" id="trades"><div class="empty">loading</div></div>
+  </section>
 
   <section class="panel" style="margin-top:18px">
     <h2>Decision journal</h2>
@@ -300,6 +320,36 @@ function gate(g) {
     </div>`).join("");
 }
 
+function trades(t) {
+  const rows = t?.trades || [];
+  const parts = [];
+  if (t?.closed_count) {
+    parts.push(`${t.closed_count} closed`);
+    parts.push(`${signed(t.realized_total)} realised`);
+    if (t.win_rate != null) parts.push(`${Math.round(t.win_rate * 100)}% won`);
+  }
+  if (t?.open_count) parts.push(`${t.open_count} open`);
+  $("trade-summary").textContent = parts.join(" · ");
+
+  if (!rows.length) {
+    $("trades").innerHTML = `<div class="empty">No filled trades recorded yet.</div>`;
+    return;
+  }
+  $("trades").innerHTML = rows.map(t => {
+    const pnl = t.realized;
+    const cls = pnl == null ? "" : (pnl > 0 ? "up" : (pnl < 0 ? "down" : ""));
+    return `<div class="trade">
+      <span class="exp">${esc(t.expiry)}</span>
+      <span class="kind">${esc((t.structure || "").replace(/_/g, " "))}
+        <span class="badge ${t.open ? "open" : "closed"}">${t.open ? "open" : "closed"}</span></span>
+      <span class="px">+${(t.entry_credit ?? 0).toFixed(2)} cr</span>
+      <span class="px">${t.exit_cost != null ? "−" + t.exit_cost.toFixed(2) + " db" : "&mdash;"}</span>
+      <span class="pnl ${cls}">${pnl == null ? "&mdash;" : signed(pnl)}</span>
+      <span class="legs">${t.legs.map(esc).join("  ")}</span>
+    </div>`;
+  }).join("");
+}
+
 function detail(e) {
   const skip = new Set(["ts", "event", "stdout", "stderr", "checks", "tickets", "signals"]);
   return Object.entries(e).filter(([k]) => !skip.has(k))
@@ -319,9 +369,9 @@ function journal(j) {
 }
 
 async function refresh() {
-  const [s, g, j, cfg, eq] = await Promise.all([
+  const [s, g, j, cfg, eq, tr] = await Promise.all([
     get("/api/summary"), get("/api/gate"), get("/api/journal?limit=140"),
-    get("/api/config"), get("/api/equity"),
+    get("/api/config"), get("/api/equity"), get("/api/trades"),
   ]);
 
   const state = g?.state || "unknown";
@@ -338,6 +388,7 @@ async function refresh() {
   figures(s, cfg, eq);
   reasons(s);
   gate(g);
+  trades(tr);
   journal(j);
   $("updated").textContent = s?.last_updated
     ? " Last event " + s.last_updated.replace("T", " ").slice(0, 19) + "Z."

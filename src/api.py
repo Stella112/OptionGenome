@@ -186,6 +186,67 @@ def api_summary() -> Any:
     }
 
 
+@app.get("/api/trades")
+def api_trades() -> Any:
+    """Every structure the desk traded, paired open-to-close.
+
+    Built from FILL entries, so the prices are the broker's own fills rather
+    than the limits the desk asked for. Opens and closes are matched on
+    underlying and expiry, which is what identifies a structure across its life
+    -- the ticket id is content-derived at entry and does not survive the roll
+    into a close.
+    """
+    fills = [e for e in _journal().tail(6000) if e.get("event") == "FILL"]
+
+    books: dict[tuple[str, str], dict] = {}
+    for fill in fills:
+        key = (str(fill.get("underlying") or ""), str(fill.get("expiry") or ""))
+        book = books.setdefault(key, {"opens": [], "closes": []})
+        side = "closes" if fill.get("intent") == "close" else "opens"
+        book[side].append(fill)
+
+    CONTRACT = 100
+    trades = []
+    for (underlying, expiry), book in books.items():
+        opens, closes = book["opens"], book["closes"]
+        if not opens:
+            continue
+        entry = opens[0]
+        lots = entry.get("filled_qty") or 1
+        credit = entry.get("filled_avg_price")
+        exit_ = closes[0] if closes else None
+        cost = exit_.get("filled_avg_price") if exit_ else None
+
+        realized = None
+        if credit is not None and cost is not None:
+            realized = round((float(credit) - float(cost)) * CONTRACT * lots, 2)
+
+        trades.append({
+            "underlying": underlying,
+            "expiry": expiry,
+            "structure": entry.get("structure"),
+            "lots": lots,
+            "opened_at": entry.get("filled_at") or entry.get("ts"),
+            "closed_at": (exit_ or {}).get("filled_at") or (exit_ or {}).get("ts"),
+            "entry_credit": float(credit) if credit is not None else None,
+            "exit_cost": float(cost) if cost is not None else None,
+            "realized": realized,
+            "open": exit_ is None,
+            "legs": entry.get("legs") or [],
+        })
+
+    trades.sort(key=lambda t: t.get("opened_at") or "", reverse=True)
+    closed = [t for t in trades if not t["open"] and t["realized"] is not None]
+    wins = [t for t in closed if t["realized"] > 0]
+    return {
+        "trades": trades,
+        "open_count": sum(1 for t in trades if t["open"]),
+        "closed_count": len(closed),
+        "realized_total": round(sum(t["realized"] for t in closed), 2) if closed else 0.0,
+        "win_rate": round(len(wins) / len(closed), 3) if closed else None,
+    }
+
+
 @app.get("/api/equity")
 def api_equity(limit: int = 240) -> Any:
     """Reconciled equity over time, for the dashboard sparkline.

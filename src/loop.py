@@ -196,6 +196,79 @@ class TradingLoop:
             )
             result.notes.append(f"close_failed:{type(exc).__name__}")
 
+    # --- fills ---------------------------------------------------------------
+
+    def record_fills(self, result: PassResult) -> int:
+        """Journal any newly filled order, with the price it actually got.
+
+        Nothing wrote FILL before this, so the journal recorded what the desk
+        asked for (a limit) and never what it received. Realised P&L computed
+        from limits is a guess; this reads the broker's own fill prices.
+
+        Deduplicated by client_order_id against what is already journalled.
+        """
+        try:
+            payload = self.mcp.get_open_orders(status="all", limit=100, nested=True)
+        except Exception as exc:
+            self.journal.record("ERROR", stage="record_fills", error=str(exc))
+            return 0
+
+        orders = payload if isinstance(payload, list) else []
+        if isinstance(payload, dict):
+            for key in ("result", "orders", "data"):
+                if isinstance(payload.get(key), list):
+                    orders = payload[key]
+                    break
+
+        already = {
+            entry.get("client_order_id")
+            for entry in self.journal.tail(4000)
+            if entry.get("event") == "FILL"
+        }
+
+        written = 0
+        for order in orders:
+            if not isinstance(order, dict) or order.get("status") != "filled":
+                continue
+            coid = order.get("client_order_id")
+            if not coid or coid in already:
+                continue
+
+            legs = order.get("legs") or []
+            first = legs[0] if legs and isinstance(legs[0], dict) else {}
+            intent = str(first.get("position_intent") or "")
+            symbol = str(first.get("symbol") or order.get("symbol") or "")
+
+            underlying, expiry = "", ""
+            try:
+                from .broker.occ import parse_option_symbol
+
+                contract = parse_option_symbol(symbol)
+                underlying, expiry = contract.underlying, contract.expiry.isoformat()
+            except Exception:
+                pass
+
+            price = order.get("filled_avg_price")
+            self.journal.record(
+                "FILL",
+                client_order_id=coid,
+                order_id=order.get("id"),
+                intent="close" if "close" in intent else "open",
+                underlying=underlying,
+                expiry=expiry,
+                structure="iron_condor" if len(legs) == 4 else "put_credit_spread",
+                filled_avg_price=float(price) if price is not None else None,
+                filled_qty=int(float(order.get("filled_qty") or 0)),
+                filled_at=order.get("filled_at"),
+                legs=[str(l.get("symbol")) for l in legs if isinstance(l, dict)],
+            )
+            already.add(coid)
+            written += 1
+
+        if written:
+            result.notes.append(f"fills_recorded:{written}")
+        return written
+
     # --- new entries ---------------------------------------------------------
 
     def consider_new_entry(
@@ -327,6 +400,7 @@ class TradingLoop:
             )
 
         today = now.date()
+        self.record_fills(result)
         self.manage_open_positions(open_positions, state, today, result)
         self.consider_new_entry(chain, signals, state, today, result)
         return result
