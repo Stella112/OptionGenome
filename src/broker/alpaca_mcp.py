@@ -260,8 +260,13 @@ class AlpacaMCP:
     def get_positions(self) -> Any:
         return self._invoke("get_positions")
 
-    def get_open_orders(self) -> Any:
-        return self._invoke("get_open_orders")
+    def get_open_orders(self, **params: Any) -> Any:
+        """Orders. Accepts the server's filters: status, limit, nested, symbols.
+
+        Defaults to open orders when nothing is passed, which is what the name
+        promises; pass status="all" to include filled and cancelled.
+        """
+        return self._invoke("get_open_orders", **params)
 
     # Parameter names below are transcribed from the connected server's own tool
     # schemas (docs/mcp-schemas.txt, regenerate with scripts/mcp_schemas.py), not

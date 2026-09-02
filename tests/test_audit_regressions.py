@@ -409,3 +409,32 @@ def test_event_counts_are_cached_until_the_file_changes(tmp_path):
 
 def test_event_counts_of_a_missing_journal_are_empty(tmp_path):
     assert Journal(tmp_path / "nope.jsonl").event_counts() == {}
+
+
+# --- 12. order filters reach the server -------------------------------------
+
+
+def test_get_open_orders_passes_filters_through():
+    """record_fills needs status="all"; the adapter previously took no arguments."""
+    from src.broker.alpaca_mcp import AlpacaMCP, discover_capabilities
+
+    seen = {}
+
+    def call(name, params):
+        seen["name"] = name
+        seen["params"] = params
+        return []
+
+    mcp = AlpacaMCP(call, discover_capabilities(["get_orders"]))
+    mcp.get_open_orders(status="all", limit=100, nested=True)
+    assert seen["name"] == "get_orders"
+    assert seen["params"] == {"status": "all", "limit": 100, "nested": True}
+
+
+def test_get_open_orders_still_works_with_no_filters():
+    from src.broker.alpaca_mcp import AlpacaMCP, discover_capabilities
+
+    seen = {}
+    mcp = AlpacaMCP(lambda n, p: seen.update(params=p) or [], discover_capabilities(["get_orders"]))
+    mcp.get_open_orders()
+    assert seen["params"] == {}
