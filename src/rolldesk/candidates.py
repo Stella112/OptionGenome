@@ -15,7 +15,7 @@ import hashlib
 from dataclasses import dataclass
 from datetime import date, datetime
 from decimal import Decimal
-from typing import Iterable, Sequence
+from typing import Iterable, Mapping, Sequence
 
 from ..config import Config
 from ..types import Leg, Permission, Quote, StructureType, Ticket
@@ -25,10 +25,20 @@ from .structures import StructureError, derive_geometry
 #: drive candidate DIVERSITY, not risk: every resulting ticket still faces the
 #: full Risk Officer. Deliberately module-level rather than in config.yaml,
 #: which the spec freezes.
-TARGET_SHORT_DELTAS: tuple[float, ...] = (0.10, 0.16, 0.22)
-#: 0.32 was dropped on 2026-09-02: a short that close to the money on a
-#: short-dated structure is breached far too often, and the ranking below no
-#: longer needs a high-credit candidate to have something to choose.
+TARGET_SHORT_DELTAS: tuple[float, ...] = (0.16, 0.22, 0.30)
+#: Measured on the live SPY chain at 5-wide, where friction is roughly fixed
+#: per structure and credit rises with delta:
+#:
+#:     delta   credit   friction   as % of credit   credit/width
+#:      0.10   $  59      $ 8          14%             0.118
+#:      0.16   $ 109      $20          18%             0.218
+#:      0.22   $ 149      $ 8           5%             0.298
+#:      0.30   $ 233      $19           8%             0.465
+#:
+#: Far-out-of-the-money shorts are the WORST place to be: least premium against
+#: the same cost, and 0.10 does not even clear min_credit_to_width of 0.15, so
+#: the Risk Officer would refuse it anyway. An earlier attempt to reduce risk by
+#: targeting 0.10-0.22 halved the credit and doubled friction as a share of it.
 
 #: Spread widths to attempt, in strike points.
 #:
@@ -315,39 +325,55 @@ def build_iron_condors(
     return tickets
 
 
-def expected_return_on_risk(ticket: Ticket) -> float:
-    """Expected P&L per share, divided by max loss per share.
+def round_trip_friction(ticket: Ticket, quotes: Mapping[str, "ChainContract"]) -> float:
+    """Bid-ask cost of opening and closing this structure, per share.
 
-    Probability of the shorts finishing out of the money is taken from the
-    short delta the ticket already carries: ~(1 - delta) for one short,
-    ~(1 - 2*delta) for a condor's two. Expected value is then the credit on a
-    win against the width-minus-credit on a loss.
+    Every leg is crossed on the way in and again on the way out, so the whole
+    spread is paid once per leg over the life of the trade.
+    """
+    total = 0.0
+    for leg in ticket.legs:
+        contract = quotes.get(leg.symbol)
+        if contract is None:
+            continue
+        total += max(0.0, contract.ask - contract.bid)
+    return total
 
-    This replaced ranking by credit-to-width, which always chose the short
-    strike nearest the money -- the richest credit and, exactly for that
-    reason, the one most likely to be breached. The desk's first directional
-    loss was a 0.3-delta short chosen that way.
+
+def net_credit_on_risk(ticket: Ticket, quotes: Mapping[str, "ChainContract"]) -> float:
+    """Credit kept after transaction cost, per dollar of risk.
+
+    Deliberately NOT an expected-value model. An earlier version weighted the
+    credit by a delta-implied probability of profit, which is the risk-neutral
+    measure -- under it every option is priced to roughly zero expectancy by
+    construction, so the score reduced to "prefer the highest win rate" and
+    steered the desk to far-out-of-the-money shorts with the worst cost ratio.
+
+    What is genuinely measurable is what the structure collects and what
+    crossing the spread takes back. Rank on that.
     """
     if ticket.width <= 0:
         return -1.0
-    shorts = sum(1 for leg in ticket.legs if leg.side == "sell")
-    p_win = max(0.0, min(1.0, 1.0 - shorts * abs(ticket.short_delta)))
     loss = ticket.width - ticket.credit_mid
     if loss <= 0:
         return -1.0
-    ev = ticket.credit_mid * p_win - loss * (1.0 - p_win)
-    return ev / loss
+    return (ticket.credit_mid - round_trip_friction(ticket, quotes)) / loss
 
 
-def _diversify(tickets: Sequence[Ticket], limit: int) -> list[Ticket]:
+def _diversify(
+    tickets: Sequence[Ticket],
+    limit: int,
+    quotes: Mapping[str, "ChainContract"] | None = None,
+) -> list[Ticket]:
     """Drop duplicates, then spread the shortlist across delta and width.
 
     Ranking alone would return three variants of the same trade; taking the
     best of each (delta, width) bucket keeps the shortlist genuinely different.
     """
+    quotes = quotes or {}
     seen: set[tuple] = set()
     unique: list[Ticket] = []
-    for t in sorted(tickets, key=lambda t: -expected_return_on_risk(t)):
+    for t in sorted(tickets, key=lambda t: -net_credit_on_risk(t, quotes)):
         key = (t.structure_type, t.expiry, tuple(leg.symbol for leg in t.legs))
         if key in seen:
             continue
@@ -359,7 +385,7 @@ def _diversify(tickets: Sequence[Ticket], limit: int) -> list[Ticket]:
         bucket = (round(t.short_delta, 2), t.width)
         buckets.setdefault(bucket, t)
 
-    spread = sorted(buckets.values(), key=lambda t: -expected_return_on_risk(t))
+    spread = sorted(buckets.values(), key=lambda t: -net_credit_on_risk(t, quotes))
     if len(spread) >= limit:
         return spread[:limit]
     # Not enough distinct buckets; top up from the remaining unique tickets.
@@ -410,11 +436,12 @@ def generate_candidates(
             if t.width > 0 and (t.credit_mid / t.width) >= config.min_credit_to_width
         ]
 
+    quotes = {c.symbol: c for c in chain}
     if prefer_longest_expiry:
         for expiry in expiries:
             found = viable_for([expiry])
             if found:
-                return _diversify(found, limit)
+                return _diversify(found, limit, quotes)
         return []
 
-    return _diversify(viable_for(expiries), limit)
+    return _diversify(viable_for(expiries), limit, quotes)

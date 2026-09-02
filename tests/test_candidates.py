@@ -354,46 +354,63 @@ def test_wider_structures_still_face_the_risk_cap(config):
         assert any("max_loss_pct_exceeded" in r for r in decision.reasons)
 
 
-# --- ranking by expected return on risk --------------------------------------
+# --- ranking by credit net of transaction cost -------------------------------
 
 
-def _ticket(credit, delta, legs_n=4, width=5.0):
+def _ranked(credit, delta, width=5.0, spread=0.02):
+    """A condor plus the quotes it would be ranked against."""
+    from src.rolldesk.candidates import ChainContract
     from src.types import Leg, Ticket
 
-    legs = tuple(
-        Leg(f"L{i}", "sell" if i % 2 == 0 else "buy",
-            "sell_to_open" if i % 2 == 0 else "buy_to_open", 1)
-        for i in range(legs_n)
-    )
-    return Ticket("t", "SPY", "iron_condor" if legs_n == 4 else "put_credit_spread",
-                  EXPIRY.isoformat(), 4, legs, credit, width,
-                  max(0.0, (width - credit) * 100), delta, 100, "INCOME", 1)
+    legs, quotes = [], {}
+    for i in range(4):
+        sym = f"L{i}"
+        legs.append(Leg(sym, "sell" if i % 2 == 0 else "buy",
+                        "sell_to_open" if i % 2 == 0 else "buy_to_open", 1))
+        quotes[sym] = ChainContract(sym, "SPY", EXPIRY, Decimal("750"), "P",
+                                    1.0, 1.0 + spread, NOW, -delta)
+    ticket = Ticket("t", "SPY", "iron_condor", EXPIRY.isoformat(), 4, tuple(legs),
+                    credit, width, max(0.0, (width - credit) * 100), delta, 100,
+                    "INCOME", 1)
+    return ticket, quotes
 
 
-def test_ranking_prefers_probability_over_raw_credit():
-    """The richest credit sits nearest the money and is breached most often."""
-    from src.rolldesk.candidates import expected_return_on_risk
+def test_ranking_charges_a_structure_for_its_own_spread():
+    """Two identical credits rank apart when one is more expensive to trade."""
+    from src.rolldesk.candidates import net_credit_on_risk
 
-    rich_but_risky = _ticket(2.40, 0.32)   # ~36% chance both shorts survive
-    modest_and_safe = _ticket(1.20, 0.10)  # ~80% chance
-    assert expected_return_on_risk(modest_and_safe) > expected_return_on_risk(rich_but_risky)
+    cheap, cheap_q = _ranked(1.50, 0.22, spread=0.01)
+    dear, dear_q = _ranked(1.50, 0.22, spread=0.20)
+    assert net_credit_on_risk(cheap, cheap_q) > net_credit_on_risk(dear, dear_q)
 
 
-def test_a_structure_that_cannot_lose_ranks_above_a_coin_flip():
-    from src.rolldesk.candidates import expected_return_on_risk
+def test_more_credit_ranks_higher_at_equal_cost():
+    from src.rolldesk.candidates import net_credit_on_risk
 
-    assert expected_return_on_risk(_ticket(1.0, 0.0, legs_n=2)) > \
-        expected_return_on_risk(_ticket(1.0, 0.5, legs_n=2))
+    rich, rich_q = _ranked(2.30, 0.30)
+    thin, thin_q = _ranked(0.59, 0.10)
+    assert net_credit_on_risk(rich, rich_q) > net_credit_on_risk(thin, thin_q)
+
+
+def test_friction_is_the_whole_spread_on_every_leg():
+    """Each leg is crossed entering and again exiting."""
+    from src.rolldesk.candidates import round_trip_friction
+
+    ticket, quotes = _ranked(1.50, 0.22, spread=0.05)
+    assert round_trip_friction(ticket, quotes) == pytest.approx(0.20)  # 4 legs x 0.05
 
 
 def test_broken_geometry_ranks_last():
-    from src.rolldesk.candidates import expected_return_on_risk
+    from src.rolldesk.candidates import net_credit_on_risk
 
-    assert expected_return_on_risk(_ticket(1.0, 0.1, legs_n=2, width=0.0)) < 0
-    assert expected_return_on_risk(_ticket(6.0, 0.1, legs_n=2, width=5.0)) < 0
+    zero_width, q1 = _ranked(1.0, 0.2, width=0.0)
+    inverted, q2 = _ranked(6.0, 0.2, width=5.0)
+    assert net_credit_on_risk(zero_width, q1) < 0
+    assert net_credit_on_risk(inverted, q2) < 0
 
 
-def test_aggressive_deltas_are_no_longer_targeted():
+def test_delta_targets_clear_the_credit_floor(config):
+    """0.10-delta structures priced below min_credit_to_width and were refused."""
     from src.rolldesk.candidates import TARGET_SHORT_DELTAS
 
-    assert max(TARGET_SHORT_DELTAS) <= 0.25
+    assert min(TARGET_SHORT_DELTAS) >= 0.15

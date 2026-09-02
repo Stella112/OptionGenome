@@ -167,3 +167,55 @@ def test_marketdna_never_names_a_strike_or_expiry(config):
     import re
 
     assert not re.search(r"[A-Z]{1,6}\d{6}[CP]\d{8}", repr(permission.as_dict()))
+
+
+# --- variance risk premium gate ----------------------------------------------
+
+
+def vol_signals(iv, rv, **kw):
+    base = signals(**kw)
+    import dataclasses
+
+    return dataclasses.replace(base, implied_vol=iv, realized_vol=rv)
+
+
+def test_no_permission_when_implied_vol_is_not_above_realized(config):
+    """Selling volatility below what the tape delivers has no edge at all."""
+    permission = permissions_for(vol_signals(iv=0.07, rv=0.10), config)
+    assert permission.max_lots == 0
+    assert permission.allowed_strategies == ()
+    assert "no_variance_risk_premium" in permission.reasons
+
+
+def test_a_thin_premium_is_not_enough(config):
+    from src.marketdna.regime import MIN_IV_TO_RV
+
+    just_under = permissions_for(vol_signals(iv=0.10 * (MIN_IV_TO_RV - 0.01), rv=0.10), config)
+    assert just_under.max_lots == 0
+
+
+def test_a_real_premium_permits_trading(config):
+    from src.marketdna.regime import MIN_IV_TO_RV
+
+    ample = permissions_for(vol_signals(iv=0.10 * (MIN_IV_TO_RV + 0.10), rv=0.10), config)
+    assert ample.max_lots == 1
+    assert ample.allowed_strategies
+
+
+def test_the_gate_withholds_permission_without_changing_the_regime(config):
+    """The spec's four-way classification and its order stay intact."""
+    blocked = permissions_for(vol_signals(iv=0.05, rv=0.10), config)
+    assert blocked.regime == "INCOME"
+    assert blocked.max_lots == 0
+
+
+def test_the_gate_cannot_revive_a_blocked_regime(config):
+    """A rich premium must not let MOMENTUM or EVENT trade."""
+    for kw in ({"adx": 40.0}, {"hours_to_event": 1.0}):
+        permission = permissions_for(vol_signals(iv=0.30, rv=0.10, **kw), config)
+        assert permission.max_lots == 0
+
+
+def test_an_unmeasurable_realized_vol_does_not_block(config):
+    """Zero realized vol is missing data, not a signal to stand down."""
+    assert permissions_for(vol_signals(iv=0.12, rv=0.0), config).max_lots == 1

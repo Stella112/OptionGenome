@@ -16,6 +16,14 @@ from __future__ import annotations
 from ..config import Config
 from ..types import Permission, Regime, StructureType
 
+#: Selling premium pays when implied volatility exceeds what the underlying goes
+#: on to realise -- the variance risk premium. When implied sits at or below
+#: realised, the desk would be selling volatility cheaply, which is the one
+#: condition under which this strategy has no edge to begin with.
+#:
+#: The cushion keeps marginal cases out rather than trading a coin flip.
+MIN_IV_TO_RV = 1.05
+
 #: Structures each regime may open. MOMENTUM and EVENT open nothing; existing
 #: positions stay manageable in every regime (spec section 17).
 REGIME_STRATEGIES: dict[Regime, tuple[str, ...]] = {
@@ -81,6 +89,21 @@ def permissions_for(signals, config: Config) -> Permission:
     """
     regime, reasons = classify(signals, config)
     max_lots = min(config.max_lots, config.max_lots_for_regime(regime.value))
+
+    # The regime says what kind of tape this is. This says whether selling
+    # premium into it is worth doing at all. The regime classification itself
+    # is untouched, so the spec's four-way scheme and its mandatory evaluation
+    # order still hold; this only withholds permission.
+    rv, iv = signals.realized_vol, signals.implied_vol
+    if max_lots > 0 and rv > 0 and iv <= rv * MIN_IV_TO_RV:
+        max_lots = 0
+        reasons = reasons + (
+            "no_variance_risk_premium",
+            f"implied_vol={iv:.4f}",
+            f"realized_vol={rv:.4f}",
+            f"required_ratio={MIN_IV_TO_RV}",
+        )
+
     strategies = REGIME_STRATEGIES[regime] if max_lots > 0 else ()
     return Permission(
         regime=regime.value,
