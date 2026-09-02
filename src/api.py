@@ -186,6 +186,25 @@ def api_summary() -> Any:
     }
 
 
+def _signed_credit(price: Any) -> float | None:
+    """Credit received on an opening fill, as a positive number.
+
+    Alpaca reports a multi-leg fill price signed by cash flow, so a credit
+    structure opens at a negative price. Returns the magnitude the desk actually
+    collected.
+    """
+    if price is None:
+        return None
+    return abs(float(price))
+
+
+def _signed_debit(price: Any) -> float | None:
+    """Cost paid on a closing fill, as a positive number."""
+    if price is None:
+        return None
+    return abs(float(price))
+
+
 @app.get("/api/trades")
 def api_trades() -> Any:
     """Every structure the desk traded, paired open-to-close.
@@ -213,13 +232,18 @@ def api_trades() -> Any:
             continue
         entry = opens[0]
         lots = entry.get("filled_qty") or 1
-        credit = entry.get("filled_avg_price")
         exit_ = closes[0] if closes else None
-        cost = exit_.get("filled_avg_price") if exit_ else None
+
+        # Alpaca signs a multi-leg fill price by CASH FLOW: negative means the
+        # account received money. Opening a credit structure therefore fills at
+        # a negative price and closing it at a positive one. Reading those as
+        # plain magnitudes made a 2-dollar loss look like a 241-dollar one.
+        credit = _signed_credit(entry.get("filled_avg_price"))
+        cost = _signed_debit(exit_.get("filled_avg_price")) if exit_ else None
 
         realized = None
         if credit is not None and cost is not None:
-            realized = round((float(credit) - float(cost)) * CONTRACT * lots, 2)
+            realized = round((credit - cost) * CONTRACT * lots, 2)
 
         trades.append({
             "underlying": underlying,
@@ -228,8 +252,8 @@ def api_trades() -> Any:
             "lots": lots,
             "opened_at": entry.get("filled_at") or entry.get("ts"),
             "closed_at": (exit_ or {}).get("filled_at") or (exit_ or {}).get("ts"),
-            "entry_credit": float(credit) if credit is not None else None,
-            "exit_cost": float(cost) if cost is not None else None,
+            "entry_credit": credit,
+            "exit_cost": cost,
             "realized": realized,
             "open": exit_ is None,
             "legs": entry.get("legs") or [],

@@ -438,3 +438,69 @@ def test_get_open_orders_still_works_with_no_filters():
     mcp = AlpacaMCP(lambda n, p: seen.update(params=p) or [], discover_capabilities(["get_orders"]))
     mcp.get_open_orders()
     assert seen["params"] == {}
+
+
+# --- 13. multi-leg fill prices are signed by cash flow ----------------------
+
+
+def test_realised_pnl_uses_the_cash_flow_sign(tmp_path, monkeypatch):
+    """Alpaca opens a credit structure at a NEGATIVE fill price. Read as plain
+    magnitudes, an 8-dollar loss was reported as a 114-dollar one."""
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for entry in [
+            {"ts": "2026-09-01T18:59:00+00:00", "event": "FILL", "intent": "open",
+             "underlying": "SPY", "expiry": "2026-09-08", "structure": "iron_condor",
+             "filled_avg_price": -0.53, "filled_qty": 1, "legs": []},
+            {"ts": "2026-09-01T19:14:00+00:00", "event": "FILL", "intent": "close",
+             "underlying": "SPY", "expiry": "2026-09-08", "structure": "iron_condor",
+             "filled_avg_price": 0.61, "filled_qty": 1, "legs": []},
+        ]:
+            fh.write(json.dumps(entry) + "\n")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+    from src import api
+
+    payload = api.api_trades()
+    trade = payload["trades"][0]
+    assert trade["entry_credit"] == pytest.approx(0.53)
+    assert trade["exit_cost"] == pytest.approx(0.61)
+    assert trade["realized"] == pytest.approx(-8.0)
+    assert payload["realized_total"] == pytest.approx(-8.0)
+
+
+def test_a_winning_round_trip_reads_positive(tmp_path, monkeypatch):
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for entry in [
+            {"ts": "2026-09-01T18:00:00+00:00", "event": "FILL", "intent": "open",
+             "underlying": "SPY", "expiry": "2026-09-11", "structure": "iron_condor",
+             "filled_avg_price": -1.00, "filled_qty": 1, "legs": []},
+            {"ts": "2026-09-02T18:00:00+00:00", "event": "FILL", "intent": "close",
+             "underlying": "SPY", "expiry": "2026-09-11", "structure": "iron_condor",
+             "filled_avg_price": 0.40, "filled_qty": 1, "legs": []},
+        ]:
+            fh.write(json.dumps(entry) + "\n")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+    from src import api
+
+    payload = api.api_trades()
+    assert payload["trades"][0]["realized"] == pytest.approx(60.0)
+    assert payload["win_rate"] == 1.0
+
+
+def test_an_open_structure_has_no_realised_pnl(tmp_path, monkeypatch):
+    path = tmp_path / "audit.jsonl"
+    path.write_text(json.dumps(
+        {"ts": "2026-09-02T18:00:00+00:00", "event": "FILL", "intent": "open",
+         "underlying": "SPY", "expiry": "2026-09-18", "structure": "iron_condor",
+         "filled_avg_price": -0.53, "filled_qty": 1, "legs": []}) + "\n", encoding="utf-8")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+    from src import api
+
+    payload = api.api_trades()
+    assert payload["trades"][0]["open"] is True
+    assert payload["trades"][0]["realized"] is None
+    assert payload["realized_total"] == 0.0
