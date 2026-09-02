@@ -25,7 +25,10 @@ from .structures import StructureError, derive_geometry
 #: drive candidate DIVERSITY, not risk: every resulting ticket still faces the
 #: full Risk Officer. Deliberately module-level rather than in config.yaml,
 #: which the spec freezes.
-TARGET_SHORT_DELTAS: tuple[float, ...] = (0.16, 0.25, 0.32)
+TARGET_SHORT_DELTAS: tuple[float, ...] = (0.10, 0.16, 0.22)
+#: 0.32 was dropped on 2026-09-02: a short that close to the money on a
+#: short-dated structure is breached far too often, and the ranking below no
+#: longer needs a high-credit candidate to have something to choose.
 
 #: Spread widths to attempt, in strike points.
 #:
@@ -312,16 +315,39 @@ def build_iron_condors(
     return tickets
 
 
+def expected_return_on_risk(ticket: Ticket) -> float:
+    """Expected P&L per share, divided by max loss per share.
+
+    Probability of the shorts finishing out of the money is taken from the
+    short delta the ticket already carries: ~(1 - delta) for one short,
+    ~(1 - 2*delta) for a condor's two. Expected value is then the credit on a
+    win against the width-minus-credit on a loss.
+
+    This replaced ranking by credit-to-width, which always chose the short
+    strike nearest the money -- the richest credit and, exactly for that
+    reason, the one most likely to be breached. The desk's first directional
+    loss was a 0.3-delta short chosen that way.
+    """
+    if ticket.width <= 0:
+        return -1.0
+    shorts = sum(1 for leg in ticket.legs if leg.side == "sell")
+    p_win = max(0.0, min(1.0, 1.0 - shorts * abs(ticket.short_delta)))
+    loss = ticket.width - ticket.credit_mid
+    if loss <= 0:
+        return -1.0
+    ev = ticket.credit_mid * p_win - loss * (1.0 - p_win)
+    return ev / loss
+
+
 def _diversify(tickets: Sequence[Ticket], limit: int) -> list[Ticket]:
     """Drop duplicates, then spread the shortlist across delta and width.
 
-    Ranking by credit-to-width alone would return three variants of the same
-    trade; taking the best of each (delta, width) bucket keeps the shortlist
-    genuinely different.
+    Ranking alone would return three variants of the same trade; taking the
+    best of each (delta, width) bucket keeps the shortlist genuinely different.
     """
     seen: set[tuple] = set()
     unique: list[Ticket] = []
-    for t in sorted(tickets, key=lambda t: -(t.credit_mid / t.width if t.width else 0)):
+    for t in sorted(tickets, key=lambda t: -expected_return_on_risk(t)):
         key = (t.structure_type, t.expiry, tuple(leg.symbol for leg in t.legs))
         if key in seen:
             continue
@@ -333,9 +359,7 @@ def _diversify(tickets: Sequence[Ticket], limit: int) -> list[Ticket]:
         bucket = (round(t.short_delta, 2), t.width)
         buckets.setdefault(bucket, t)
 
-    spread = sorted(
-        buckets.values(), key=lambda t: -(t.credit_mid / t.width if t.width else 0)
-    )
+    spread = sorted(buckets.values(), key=lambda t: -expected_return_on_risk(t))
     if len(spread) >= limit:
         return spread[:limit]
     # Not enough distinct buckets; top up from the remaining unique tickets.

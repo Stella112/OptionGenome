@@ -71,4 +71,4 @@ Everything is in an append-only, fsynced JSONL journal: every regime call, candi
 
 On day one the desk made **133 decisions and refused 130 of them** — stale quotes, overlapping exposure, adjacent expiry, final-session window, market closed. Nobody stopped it. The Risk Officer did, and wrote down why.
 
-**614 tests. 5,256 lines of source, 4,435 lines of tests.** Paper trading only; simulated funds, real market data.
+**670 tests. 5,256 lines of source, 4,435 lines of tests.** Paper trading only; simulated funds, real market data.

@@ -182,14 +182,25 @@ def test_deny_overlapping_short_same_expiry(allow_case):
     assert reasons_containing(decision, "overlapping_short_same_expiry")
 
 
-def test_deny_overlapping_short_adjacent_expiry(allow_case):
+@pytest.mark.parametrize("days", [1, 2])
+def test_deny_overlapping_short_adjacent_expiry(allow_case, days):
+    """SPY lists an expiry most trading days; the neighbour is a day or two away."""
     legs = pcs_legs()
     allow_case["book"] = make_book(
-        legs, open_structures=(open_structure(EXPIRY + timedelta(days=3)),)
+        legs, open_structures=(open_structure(EXPIRY + timedelta(days=days)),)
     )
     decision = evaluate(**allow_case)
     assert not decision.allowed
     assert reasons_containing(decision, "overlapping_short_adjacent_expiry")
+
+
+def test_allow_a_second_structure_three_days_out(allow_case):
+    """A week-wide exclusion left room for one position; three are permitted."""
+    legs = pcs_legs()
+    allow_case["book"] = make_book(
+        legs, open_structures=(open_structure(EXPIRY + timedelta(days=3)),)
+    )
+    assert evaluate(**allow_case).allowed
 
 
 def test_allow_when_existing_short_is_far_away(allow_case):

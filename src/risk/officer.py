@@ -36,8 +36,11 @@ from .sizing import Sizing, compute_sizing
 
 #: Two short structures on the same underlying inside this many calendar days
 #: are treated as overlapping exposure (spec section 28 check 6, "adjacent
-#: expiry"). Seven days spans the neighbouring weekly on a 1-7 DTE strategy.
-ADJACENT_EXPIRY_DAYS = 7
+#: expiry"). SPY lists expiries every trading day, so the adjacent expiry is
+#: one or two calendar days away. This was 7, which inside a 2-18 DTE window
+#: left room for roughly one position at a time and starved the desk of the
+#: three concurrent structures max_open_structures permits.
+ADJACENT_EXPIRY_DAYS = 2
 
 #: Tolerance when comparing a ticket's claimed values against recalculated ones.
 #: Tight enough to catch a wrong number, loose enough to survive float noise.

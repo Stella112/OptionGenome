@@ -352,3 +352,48 @@ def test_wider_structures_still_face_the_risk_cap(config):
         decision = evaluate(ticket, book, tiny, income(), config, today=TODAY)
         assert not decision.allowed
         assert any("max_loss_pct_exceeded" in r for r in decision.reasons)
+
+
+# --- ranking by expected return on risk --------------------------------------
+
+
+def _ticket(credit, delta, legs_n=4, width=5.0):
+    from src.types import Leg, Ticket
+
+    legs = tuple(
+        Leg(f"L{i}", "sell" if i % 2 == 0 else "buy",
+            "sell_to_open" if i % 2 == 0 else "buy_to_open", 1)
+        for i in range(legs_n)
+    )
+    return Ticket("t", "SPY", "iron_condor" if legs_n == 4 else "put_credit_spread",
+                  EXPIRY.isoformat(), 4, legs, credit, width,
+                  max(0.0, (width - credit) * 100), delta, 100, "INCOME", 1)
+
+
+def test_ranking_prefers_probability_over_raw_credit():
+    """The richest credit sits nearest the money and is breached most often."""
+    from src.rolldesk.candidates import expected_return_on_risk
+
+    rich_but_risky = _ticket(2.40, 0.32)   # ~36% chance both shorts survive
+    modest_and_safe = _ticket(1.20, 0.10)  # ~80% chance
+    assert expected_return_on_risk(modest_and_safe) > expected_return_on_risk(rich_but_risky)
+
+
+def test_a_structure_that_cannot_lose_ranks_above_a_coin_flip():
+    from src.rolldesk.candidates import expected_return_on_risk
+
+    assert expected_return_on_risk(_ticket(1.0, 0.0, legs_n=2)) > \
+        expected_return_on_risk(_ticket(1.0, 0.5, legs_n=2))
+
+
+def test_broken_geometry_ranks_last():
+    from src.rolldesk.candidates import expected_return_on_risk
+
+    assert expected_return_on_risk(_ticket(1.0, 0.1, legs_n=2, width=0.0)) < 0
+    assert expected_return_on_risk(_ticket(6.0, 0.1, legs_n=2, width=5.0)) < 0
+
+
+def test_aggressive_deltas_are_no_longer_targeted():
+    from src.rolldesk.candidates import TARGET_SHORT_DELTAS
+
+    assert max(TARGET_SHORT_DELTAS) <= 0.25
