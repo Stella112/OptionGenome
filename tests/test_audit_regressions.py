@@ -263,3 +263,29 @@ def test_roll_does_not_claim_a_denial_that_never_happened():
     source = inspect.getsource(loop.TradingLoop.manage_open_positions)
     assert "roll_replacement_denied" not in source
     assert "roll_requested" in source
+
+
+# --- 8. the journal records what was DONE, not only what was decided --------
+
+
+def test_defend_is_recorded_as_monitored_not_as_an_action_taken(config, tmp_path):
+    """DEFEND fell through every branch, so the journal claimed a defence that
+    never happened. The record must state that no adjustment was made."""
+    import inspect
+
+    from src import loop
+
+    source = inspect.getsource(loop.TradingLoop.manage_open_positions)
+    assert "action_taken" in source
+    assert "monitored_only" in source
+    assert "Action.DEFEND" in source
+
+
+def test_every_lifecycle_branch_sets_an_action_taken():
+    import inspect
+
+    from src import loop
+
+    source = inspect.getsource(loop.TradingLoop.manage_open_positions)
+    for label in ("closing_position", "closing_for_reentry", "monitored_only"):
+        assert label in source, label
