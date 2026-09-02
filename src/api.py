@@ -295,8 +295,15 @@ def api_risk() -> Any:
     except ConfigError as exc:
         return JSONResponse({"error": str(exc)}, status_code=500)
 
-    latest = next(
-        (e for e in reversed(_journal().tail(2000)) if e.get("event") == "RECONCILE"), {}
+    recent = _journal().tail(2000)
+    latest = next((e for e in reversed(recent) if e.get("event") == "RECONCILE"), {})
+    # The worst case the officer last permitted, so the cap has a reading against
+    # it rather than an empty bar.
+    last_open = next(
+        (e for e in reversed(recent)
+         if e.get("event") == "SUBMIT" and e.get("intent") == "open"
+         and e.get("max_loss") is not None),
+        {},
     )
     equity = latest.get("equity")
     equity = float(equity) if equity is not None else None
@@ -317,7 +324,7 @@ def api_risk() -> Any:
             gauge("Drawdown", latest.get("drawdown"), cfg.dd_flatten_pct, "%"),
             gauge("Open structures", latest.get("open_structures"),
                   cfg.max_open_structures, ""),
-            gauge("Max loss per position", None,
+            gauge("Worst case, last position", last_open.get("max_loss"),
                   round(cfg.max_loss_pct * equity, 2) if equity else None, "$"),
         ],
         "equity": equity,
