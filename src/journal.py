@@ -143,8 +143,7 @@ class Journal:
         total = 0
         with open(self.path, "rb") as fh:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
-                total += chunk.count(b"
-")
+                total += chunk.count(b"\n")
         return total
 
     def is_writable(self) -> bool:
