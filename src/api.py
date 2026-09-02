@@ -22,6 +22,23 @@ from .startup import run_gate
 
 app = FastAPI(title="OptionGenome", docs_url="/api/docs", redoc_url=None)
 
+#: Nothing here may be cached. The dashboard reports live desk state, so a
+#: browser holding a stale copy shows a judge the wrong equity, the wrong regime
+#: and a refusal count that stopped moving. Deployed updates were invisible for
+#: the same reason until these headers existed.
+NO_STORE = {
+    "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
+    "Pragma": "no-cache",
+    "Expires": "0",
+}
+
+
+@app.middleware("http")
+async def no_store(request, call_next):
+    response = await call_next(request)
+    response.headers.update(NO_STORE)
+    return response
+
 DASHBOARD = Path(__file__).parent / "dashboard.html"
 DECK = Path(__file__).parent.parent / "docs" / "deck.html"
 

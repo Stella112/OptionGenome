@@ -343,3 +343,22 @@ def test_try_call_swallows_a_failing_optional_read():
 
     mcp = AlpacaMCP(boom, discover_capabilities(["get_clock", "get_stock_latest_trade"]))
     assert mcp.try_call("get_stock_latest_trade", symbols="SPY") is None
+
+
+# --- 11. a live dashboard must never be cached ------------------------------
+
+
+def test_every_response_forbids_caching(tmp_path, monkeypatch):
+    """A cached dashboard shows a judge stale equity and a frozen refusal count,
+    and makes a deployed fix look like it never shipped."""
+    from fastapi.testclient import TestClient
+
+    monkeypatch.setenv("OG_JOURNAL", str(tmp_path / "audit.jsonl"))
+    from src import api
+
+    client = TestClient(api.app)
+    for path in ("/", "/deck", "/health", "/api/summary"):
+        response = client.get(path)
+        assert response.status_code == 200, path
+        cache = response.headers.get("cache-control", "")
+        assert "no-store" in cache, f"{path} is cacheable: {cache!r}"
