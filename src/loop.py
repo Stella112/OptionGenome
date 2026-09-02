@@ -117,7 +117,9 @@ class TradingLoop:
             # What the desk will actually DO, recorded alongside what it decided.
             # DEFEND used to fall through both branches below and take no action
             # at all, while the journal reported a defence that never happened.
-            if verdict.closes_position:
+            if verdict.action is Action.DEFEND:
+                action_taken = "closing_breached_structure"
+            elif verdict.closes_position:
                 action_taken = "closing_position"
             elif verdict.action is Action.ROLL:
                 action_taken = "closing_for_reentry"
@@ -151,13 +153,6 @@ class TradingLoop:
                     result,
                     ("roll_requested", "closed_for_reentry_through_the_risk_officer"),
                 )
-            elif verdict.action is Action.DEFEND:
-                # No adjustment is made. This desk builds no replacement
-                # structures, so the honest options on a breach are to close or
-                # to let the existing controls run. The position is defined-risk
-                # and the 2x stop and the forced flatten both remain in force, so
-                # it is monitored rather than adjusted -- and the record says so.
-                result.notes.append(f"defend_monitored:{position.ticket.ticket_id}")
 
     def _close(
         self,

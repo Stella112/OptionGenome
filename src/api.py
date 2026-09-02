@@ -84,7 +84,7 @@ def api_gate() -> Any:
     live. The desk journals its full gate result at startup; that is the honest
     answer, and it is labelled with when it was taken.
     """
-    for entry in reversed(list(_journal().read())):
+    for entry in reversed(_journal().tail(5000)):
         if entry.get("event") == "STARTUP" and entry.get("checks"):
             return {
                 "state": entry.get("state"),
@@ -106,7 +106,7 @@ def api_gate() -> Any:
 @app.get("/api/journal")
 def api_journal(limit: int = 200, event: str | None = None) -> Any:
     """Recent journal entries, newest first."""
-    entries = list(_journal().read())
+    entries = _journal().tail(max(limit * 5, 1000))
     if event:
         entries = [e for e in entries if e.get("event") == event]
     return {"count": len(entries), "entries": list(reversed(entries[-limit:]))}
@@ -115,7 +115,7 @@ def api_journal(limit: int = 200, event: str | None = None) -> Any:
 @app.get("/api/summary")
 def api_summary() -> Any:
     """Headline numbers for the dashboard."""
-    entries = list(_journal().read())
+    entries = _journal().tail(5000)
     counts = Counter(e.get("event") for e in entries)
 
     latest_regime = next(

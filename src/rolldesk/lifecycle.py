@@ -98,7 +98,20 @@ class LifecycleDecision:
 
     @property
     def closes_position(self) -> bool:
-        return self.action in (Action.TAKE_PROFIT, Action.FLATTEN, Action.EXPIRE)
+        """DEFEND closes too.
+
+        This desk builds no replacement structures, so on a breached short the
+        only two honest options are to close or to do nothing. Doing nothing
+        while recording a "defence" was the previous behaviour and it was a lie.
+        A tested short near expiry carries the gamma risk spec section 14 names
+        as the cost of trading short-dated, so the breach is closed.
+        """
+        return self.action in (
+            Action.TAKE_PROFIT,
+            Action.FLATTEN,
+            Action.EXPIRE,
+            Action.DEFEND,
+        )
 
     @property
     def needs_new_ticket(self) -> bool:
@@ -193,17 +206,4 @@ def decide(
             f"captured={position.profit_captured:.3f}",
             f"loss_multiple={position.loss_multiple:.2f}",
         ),
-    )
-
-
-def roll_replacement_failed(position: PositionState) -> LifecycleDecision:
-    """What to do when a roll's replacement structure does not pass the Risk Officer.
-
-    Spec: the replacement is validated exactly as a fresh trade, and if it fails,
-    the existing position is closed instead. A rejected roll never leaves the
-    original position open by default.
-    """
-    return LifecycleDecision(
-        Action.FLATTEN,
-        ("roll_replacement_denied", "closing_existing_position_instead"),
     )

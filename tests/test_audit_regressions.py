@@ -289,3 +289,57 @@ def test_every_lifecycle_branch_sets_an_action_taken():
     source = inspect.getsource(loop.TradingLoop.manage_open_positions)
     for label in ("closing_position", "closing_for_reentry", "monitored_only"):
         assert label in source, label
+
+
+# --- 9. bounded journal reads -----------------------------------------------
+
+
+def test_tail_returns_only_the_last_entries(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for i in range(1200):
+            fh.write(json.dumps({"ts": "2026-09-01T00:00:00+00:00", "event": "REGIME", "n": i}) + "\n")
+    entries = Journal(path).tail(100)
+    assert len(entries) == 100
+    assert entries[-1]["n"] == 1199
+
+
+def test_tail_survives_a_torn_final_line(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    path.write_text(
+        json.dumps({"ts": "t", "event": "REGIME"}) + "\n{\"event\": \"REG",
+        encoding="utf-8",
+    )
+    assert len(Journal(path).tail()) == 1
+
+
+def test_tail_on_a_missing_journal_is_empty(tmp_path):
+    assert Journal(tmp_path / "nope.jsonl").tail() == []
+
+
+# --- 10. optional reads never reach a mutating tool -------------------------
+
+
+def test_try_call_refuses_mutating_tools():
+    from src.broker.alpaca_mcp import AlpacaMCP, MCPUnavailable, discover_capabilities
+
+    mcp = AlpacaMCP(lambda name, params: "should not happen", discover_capabilities(["get_clock"]))
+    with pytest.raises(MCPUnavailable, match="refusing to call mutating tool"):
+        mcp.try_call("place_option_order", symbols="SPY")
+
+
+def test_try_call_returns_none_for_an_undiscovered_tool():
+    from src.broker.alpaca_mcp import AlpacaMCP, discover_capabilities
+
+    mcp = AlpacaMCP(lambda name, params: "x", discover_capabilities(["get_clock"]))
+    assert mcp.try_call("get_stock_latest_trade", symbols="SPY") is None
+
+
+def test_try_call_swallows_a_failing_optional_read():
+    from src.broker.alpaca_mcp import AlpacaMCP, discover_capabilities
+
+    def boom(name, params):
+        raise RuntimeError("upstream down")
+
+    mcp = AlpacaMCP(boom, discover_capabilities(["get_clock", "get_stock_latest_trade"]))
+    assert mcp.try_call("get_stock_latest_trade", symbols="SPY") is None

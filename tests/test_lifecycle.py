@@ -11,7 +11,7 @@ from decimal import Decimal
 
 import pytest
 
-from src.rolldesk.lifecycle import LifecycleDecision, PositionState, decide, roll_replacement_failed
+from src.rolldesk.lifecycle import LifecycleDecision, PositionState, decide
 from src.types import Action
 
 from .conftest import EXPIRY, NOW, TODAY, condor_legs, make_ticket, pcs_legs
@@ -149,6 +149,15 @@ def test_put_short_breached_when_spot_falls_through_it(config):
     assert action(pos, config) is Action.DEFEND
 
 
+def test_a_breach_actually_closes_the_position(config):
+    """DEFEND used to fall through every branch and do nothing at all."""
+    from src.rolldesk.lifecycle import LifecycleDecision
+
+    decision = decide(position(spot=639.0), config, TODAY)
+    assert decision.action is Action.DEFEND
+    assert decision.closes_position, "a breach that closes nothing is not a defence"
+
+
 def test_put_short_not_breached_above_the_strike(config):
     assert position(spot=641.0).breached_short() is None
 
@@ -188,11 +197,12 @@ def test_roll_is_flagged_as_needing_a_fresh_ticket(config):
     assert decision.needs_new_ticket
 
 
-def test_a_rejected_roll_closes_the_existing_position():
-    """Spec: if the replacement fails validation, close the existing instead."""
-    decision = roll_replacement_failed(position())
-    assert decision.action is Action.FLATTEN
-    assert "roll_replacement_denied" in decision.reasons
+def test_a_roll_closes_so_reentry_faces_the_officer_afresh(config):
+    """No replacement is built, so a roll closes and the next pass re-enters
+    through the normal path. That keeps the officer evaluating it as new risk."""
+    decision = decide(position(expiry=TODAY + timedelta(days=2)), config, TODAY)
+    assert decision.action is Action.ROLL
+    assert decision.needs_new_ticket
 
 
 def test_take_profit_beats_the_roll_window(config):
@@ -229,7 +239,7 @@ def test_closed_market_still_flattens_inside_the_zone(config):
         (Action.FLATTEN, True),
         (Action.EXPIRE, True),
         (Action.HOLD, False),
-        (Action.DEFEND, False),
+        (Action.DEFEND, True),
         (Action.ROLL, False),
     ],
 )

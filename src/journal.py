@@ -106,6 +106,31 @@ class Journal:
                 except json.JSONDecodeError as exc:
                     raise JournalError(f"corrupt journal at {self.path}:{lineno}: {exc}") from exc
 
+    def tail(self, limit: int = 500) -> list[dict]:
+        """The last `limit` entries, without holding the whole file in memory.
+
+        The dashboard polls every 15 seconds and previously replayed the entire
+        journal on each request. That is fine at 700 entries and not fine after
+        a week of one-minute passes.
+        """
+        from collections import deque
+
+        window: deque[str] = deque(maxlen=limit)
+        if not self.path.exists():
+            return []
+        with open(self.path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                line = line.strip()
+                if line:
+                    window.append(line)
+        out = []
+        for line in window:
+            try:
+                out.append(json.loads(line))
+            except json.JSONDecodeError:
+                continue  # a torn final line must not break the dashboard
+        return out
+
     def is_writable(self) -> bool:
         """Startup gate item 17."""
         try:

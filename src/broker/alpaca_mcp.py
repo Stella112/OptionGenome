@@ -232,6 +232,23 @@ class AlpacaMCP:
             raise MCPUnavailable(f"cannot serve {capability}: no MCP connection is configured")
         return self._call_tool(self.capabilities.tool_for(capability), params)
 
+    def try_call(self, tool: str, **params: Any) -> Any:
+        """Call an OPTIONAL tool by name, returning None if it is unavailable.
+
+        For reads the desk can work without. Keeps callers out of the private
+        _call_tool attribute, and still refuses mutating tools.
+        """
+        from .alpaca_mcp import is_write_tool  # local import keeps the guard close
+
+        if is_write_tool(tool):
+            raise MCPUnavailable(f"refusing to call mutating tool {tool!r} as an optional read")
+        if self._call_tool is None or tool not in self.capabilities.discovered:
+            return None
+        try:
+            return self._call_tool(tool, params)
+        except Exception:
+            return None
+
     # --- the read surface. Application code calls only these. ---------------
 
     def get_clock(self) -> Any:

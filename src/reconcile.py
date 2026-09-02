@@ -193,12 +193,7 @@ def underlying_price(mcp: AlpacaMCP, symbol: str) -> float:
         ("get_stock_latest_trade", lambda d: d.get("p") or d.get("price")),
         ("get_stock_latest_quote", lambda d: ((d.get("bp") or 0) + (d.get("ap") or 0)) / 2 or None),
     ):
-        if tool not in getattr(mcp.capabilities, "discovered", ()):
-            continue
-        try:
-            payload = mcp._call_tool(tool, {"symbols": symbol})
-        except Exception:
-            continue
+        payload = mcp.try_call(tool, symbols=symbol)
         if not isinstance(payload, Mapping):
             continue
         # Responses nest per symbol under "trade"/"quote" or by ticker.
