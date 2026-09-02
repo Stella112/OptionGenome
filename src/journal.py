@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import os
+import re
 from dataclasses import asdict, is_dataclass
 from datetime import date, datetime, timezone
 from decimal import Decimal
@@ -42,6 +43,12 @@ EVENTS: frozenset[str] = frozenset(
         "ERROR",
     }
 )
+
+
+#: Pulls the event name without decoding the whole line. Tolerates whitespace,
+#: because a scan keyed to this writer's exact spacing counts nothing at all in
+#: a journal written any other way.
+_EVENT_RE = re.compile(r'"event"\s*:\s*"([^"]+)"')
 
 
 class JournalError(ValueError):
@@ -145,6 +152,37 @@ class Journal:
             for chunk in iter(lambda: fh.read(1 << 20), b""):
                 total += chunk.count(b"\n")
         return total
+
+    def event_counts(self) -> dict[str, int]:
+        """Count every entry by event type, across the whole journal.
+
+        api_summary counted over tail(5000), so the headline "refused" figure
+        silently became a rolling-window count while "journal events" stayed a
+        true total -- two numbers on the same screen disagreeing.
+
+        The result is cached against the file's size and mtime, so a dashboard
+        polling every 15 seconds rescans only when something was actually
+        written.
+        """
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return {}
+        signature = (stat.st_size, stat.st_mtime_ns)
+        if getattr(self, "_counts_signature", None) == signature:
+            return dict(self._counts_cache)
+
+        counts: dict[str, int] = {}
+        with open(self.path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                match = _EVENT_RE.search(line)
+                if match:
+                    name = match.group(1)
+                    counts[name] = counts.get(name, 0) + 1
+
+        self._counts_signature = signature
+        self._counts_cache = counts
+        return dict(counts)
 
     def is_writable(self) -> bool:
         """Startup gate item 17."""

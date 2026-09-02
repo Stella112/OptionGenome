@@ -134,7 +134,9 @@ def api_summary() -> Any:
     """Headline numbers for the dashboard."""
     journal = _journal()
     entries = journal.tail(5000)
-    counts = Counter(e.get("event") for e in entries)
+    # Totals come from the whole journal; the tail is only for the most recent
+    # regime, reconcile and refusal detail.
+    counts = Counter(journal.event_counts())
 
     latest_regime = next(
         (e for e in reversed(entries) if e.get("event") == "REGIME"), None

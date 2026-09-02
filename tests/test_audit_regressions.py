@@ -377,3 +377,35 @@ def test_event_count_is_not_capped_by_the_tail_window(tmp_path):
 
 def test_count_of_a_missing_journal_is_zero(tmp_path):
     assert Journal(tmp_path / "nope.jsonl").count() == 0
+
+
+def test_event_counts_cover_the_whole_journal_not_a_window(tmp_path):
+    """"Refused" was counted over tail(5000) while "journal events" was a true
+    total, so the same screen showed two numbers that disagreed."""
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for i in range(6000):
+            fh.write(json.dumps({"ts": "t", "event": "DENY", "n": i}) + "\n")
+        for i in range(7):
+            fh.write(json.dumps({"ts": "t", "event": "ALLOW", "n": i}) + "\n")
+    counts = Journal(path).event_counts()
+    assert counts["DENY"] == 6000
+    assert counts["ALLOW"] == 7
+
+
+def test_event_counts_are_cached_until_the_file_changes(tmp_path):
+    path = tmp_path / "audit.jsonl"
+    path.write_text(json.dumps({"ts": "t", "event": "DENY"}) + "\n", encoding="utf-8")
+    j = Journal(path)
+    assert j.event_counts()["DENY"] == 1
+    assert j.event_counts()["DENY"] == 1  # served from cache
+
+    with open(path, "a", encoding="utf-8") as fh:
+        fh.write(json.dumps({"ts": "t", "event": "DENY"}) + "\n")
+    import os
+    os.utime(path, ns=(0, 0))  # force a different mtime signature
+    assert j.event_counts()["DENY"] == 2
+
+
+def test_event_counts_of_a_missing_journal_are_empty(tmp_path):
+    assert Journal(tmp_path / "nope.jsonl").event_counts() == {}
