@@ -72,6 +72,7 @@ class ChainContract:
     ask: float
     ts: datetime
     delta: float | None = None
+    implied_volatility: float | None = None
 
     @property
     def mid(self) -> float:

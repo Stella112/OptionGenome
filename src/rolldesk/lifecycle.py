@@ -69,8 +69,16 @@ class PositionState:
 
         A put short is breached when spot falls below it; a call short when spot
         rises above it. Which side a strike belongs to is read from the legs.
+
+        An unknown spot returns None rather than a breach. A missing price is not
+        a price of zero: treating it as zero puts it below every put strike, so a
+        failed quote lookup would report every position as breached and trigger a
+        defend or close on all of them at once.
         """
         from .structures import parse_legs
+
+        if self.underlying_price is None or self.underlying_price <= 0:
+            return None
 
         spot = Decimal(str(self.underlying_price))
         for parsed in parse_legs(self.ticket.legs):

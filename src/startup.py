@@ -62,6 +62,17 @@ class GateResult:
     def failures(self) -> list[CheckOutcome]:
         return [o for o in self.outcomes if not o.passed]
 
+    def as_dict(self) -> dict:
+        """The full outcome, so another process can report it without an MCP session."""
+        return {
+            "state": self.state.value,
+            "passed": self.passed,
+            "checks": [
+                {"index": o.index, "name": o.name, "passed": o.passed, "detail": o.detail}
+                for o in self.outcomes
+            ],
+        }
+
     def report(self) -> str:
         lines = [str(o) for o in self.outcomes]
         lines.append("")

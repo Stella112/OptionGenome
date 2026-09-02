@@ -26,7 +26,7 @@ from .marketdna.regime import permissions_for
 from .reconcile import ReconciledState, reconcile
 from .risk.officer import evaluate
 from .rolldesk.candidates import ChainContract, generate_candidates
-from .rolldesk.lifecycle import PositionState, decide, roll_replacement_failed
+from .rolldesk.lifecycle import PositionState, decide
 from .rolldesk.ranker import FeatherlessRanker
 from .safety import ExecutionMode
 from .types import Action, Permission, RiskDecision, SystemState, Ticket
@@ -125,10 +125,21 @@ class TradingLoop:
             if verdict.closes_position:
                 self._close(position, state, result)
             elif verdict.action is Action.ROLL:
-                # A roll is a brand-new position request. Until a replacement is
-                # built and passes the officer, the safe default is to close.
+                # A roll is a brand-new position request. No replacement is built
+                # here, so the position is closed and the next pass may open a
+                # fresh one through the normal path -- which means the officer
+                # evaluates it as the new risk it is.
+                #
+                # The reason recorded says exactly that. Claiming the replacement
+                # was DENIED would put something in the audit record that never
+                # happened, and the journal's whole value is that it did not.
                 result.notes.append(f"roll_requested:{position.ticket.ticket_id}")
-                self._close(position, state, result, roll_replacement_failed(position).reasons)
+                self._close(
+                    position,
+                    state,
+                    result,
+                    ("roll_requested", "closed_for_reentry_through_the_risk_officer"),
+                )
 
     def _close(
         self,

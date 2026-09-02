@@ -254,3 +254,22 @@ def test_every_decision_carries_a_reason(config):
 def test_decisions_are_deterministic(config):
     pos = position()
     assert decide(pos, config, TODAY) == decide(pos, config, TODAY)
+
+
+# --- unknown spot ------------------------------------------------------------
+
+
+def test_unknown_spot_is_not_a_breach(config):
+    """A missing price is not a price of zero.
+
+    Treating it as zero puts spot below every put strike, so one failed quote
+    lookup would report every open position as breached at once.
+    """
+    assert position(spot=0.0).breached_short() is None
+    assert action(position(spot=0.0), config) is not Action.DEFEND
+
+
+def test_unknown_spot_still_permits_every_other_rule(config):
+    assert action(position(spot=0.0, expiry=TODAY + timedelta(days=1)), config) is Action.FLATTEN
+    assert action(position(spot=0.0, entry_credit=100.0, cost_to_close=10.0), config) is Action.TAKE_PROFIT
+    assert action(position(spot=0.0, entry_credit=100.0, cost_to_close=300.0), config) is Action.FLATTEN

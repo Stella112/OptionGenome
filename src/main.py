@@ -22,8 +22,9 @@ from .broker.alpaca_cli import AlpacaCLI, CLIUnavailable, load_cli_reference
 from .broker.alpaca_mcp import AlpacaMCP, MCPUnavailable, discover_capabilities
 from .broker.mcp_stdio import MCPStdioBridge
 from .config import load_config
-from .marketdata import fetch_chain, fetch_daily_bars, market_clock
+from .marketdata import atm_implied_vol, fetch_chain, fetch_daily_bars, market_clock
 from .journal import Journal
+from .reconcile import as_list, rebuild_positions, underlying_price
 from .loop import TradingLoop
 from .rolldesk.ranker import FeatherlessRanker
 from .signals_builder import InsufficientData, build_signals
@@ -116,11 +117,11 @@ def main(argv: list[str] | None = None) -> int:
 
         result = run_gate(mcp=mcp, account_snapshot=snapshot, journal=journal)
         print(result.report())
-        journal.record(
-            "STARTUP",
-            state=result.state.value,
-            failures=[o.name for o in result.failures],
-        )
+        # The full outcome goes in the journal so the read-only API can report
+        # the DESK's gate. The API process holds no MCP session of its own, so
+        # re-running the gate there always failed checks 7-12 and showed HALTED
+        # on the public dashboard while the desk was live and trading.
+        journal.record("STARTUP", **result.as_dict())
 
         if args.check:
             return 0 if result.passed else 1
@@ -140,7 +141,18 @@ def main(argv: list[str] | None = None) -> int:
             try:
                 bars = fetch_daily_bars(mcp, underlying)
                 chain = fetch_chain(mcp, underlying, config, today=now.date())
-                signals = build_signals(bars, implied_vol=None, now=now, journal=journal)
+                spot = underlying_price(mcp, underlying) or (bars[-1].close if bars else 0.0)
+                # Real implied vol from the chain. Passing None here made the
+                # IV-rank gate measure realized vol instead.
+                signals = build_signals(
+                    bars,
+                    implied_vol=atm_implied_vol(chain, spot),
+                    now=now,
+                    journal=journal,
+                )
+                # Rebuilt from the broker every pass. Without this the lifecycle
+                # layer sees nothing and no position is ever managed.
+                open_positions = rebuild_positions(as_list(mcp.get_positions()), spot=spot)
             except (InsufficientData, MCPUnavailable) as exc:
                 # No data means no opinion. Open positions are still managed on
                 # the next pass; nothing is opened on a guess.
@@ -150,14 +162,27 @@ def main(argv: list[str] | None = None) -> int:
                     return 1
                 time.sleep(POLL_SECONDS)
                 continue
+            except Exception as exc:
+                # A malformed payload or a transport error must not end the
+                # session: systemd would restart into the full gate and stop
+                # managing open positions mid-market.
+                journal.record(
+                    "ERROR", stage="market_data", error=f"{type(exc).__name__}: {exc}"
+                )
+                print(f"[{now:%H:%M:%S}] pass failed: {type(exc).__name__}: {exc}", file=sys.stderr)
+                if args.once:
+                    return 1
+                time.sleep(POLL_SECONDS)
+                continue
 
             passed = loop.run_once(
-                chain=chain, signals=signals, open_positions=[], now=now
+                chain=chain, signals=signals, open_positions=open_positions, now=now
             )
             summary = passed.as_dict()
             print(
                 f"[{now:%H:%M:%S}] regime={summary['regime']} "
                 f"contracts={len(chain)} candidates={len(summary['candidates'])} "
+                f"managing={len(open_positions)} "
                 f"submitted={summary['submitted']} notes={summary['notes']}"
             )
             if args.once:

@@ -1,0 +1,265 @@
+"""Regressions for six defects found by auditing the running system.
+
+Each of these passed the existing suite while being wrong in production, which
+is the point: they are failures of wiring and accounting, not of logic. Unit
+tests exercised every component correctly; the components were not connected.
+"""
+
+from __future__ import annotations
+
+import json
+from datetime import date, datetime, timedelta, timezone
+
+import pytest
+
+from src.journal import Journal
+from src.reconcile import rebuild_positions
+from src.rolldesk.lifecycle import decide
+from src.types import Action
+
+NOW = datetime(2026, 9, 1, 15, 0, tzinfo=timezone.utc)
+TODAY = NOW.date()
+
+
+def leg(symbol, qty, entry, current):
+    return {
+        "symbol": symbol,
+        "qty": str(qty),
+        "avg_entry_price": str(entry),
+        "current_price": str(current),
+    }
+
+
+def condor(expiry="260918", *, entry=(5.00, 5.21, 3.53, 3.21), current=(4.50, 4.40, 3.00, 2.80)):
+    """The real Sept 18 structure: long 750P / short 751P / short 772C / long 773C."""
+    return [
+        leg(f"SPY{expiry}P00750000", 1, entry[0], current[0]),
+        leg(f"SPY{expiry}P00751000", -1, entry[1], current[1]),
+        leg(f"SPY{expiry}C00772000", -1, entry[2], current[2]),
+        leg(f"SPY{expiry}C00773000", 1, entry[3], current[3]),
+    ]
+
+
+# --- 1. the lifecycle layer receives real positions -------------------------
+
+
+def test_broker_legs_rebuild_into_a_managed_structure():
+    positions = rebuild_positions(condor(), spot=760.0)
+    assert len(positions) == 1
+    assert positions[0].ticket.structure_type == "iron_condor"
+    assert len(positions[0].ticket.legs) == 4
+
+
+def test_entry_credit_matches_the_broker_fill():
+    """Shorts received 5.21 + 3.53, longs paid 5.00 + 3.21: a 0.53 net credit."""
+    position = rebuild_positions(condor(), spot=760.0)[0]
+    assert position.entry_credit == pytest.approx(53.0, abs=0.01)
+
+
+def test_cost_to_close_is_derived_from_current_marks():
+    position = rebuild_positions(condor(), spot=760.0)[0]
+    assert position.cost_to_close == pytest.approx(10.0, abs=0.01)
+
+
+def test_a_rebuilt_winner_actually_triggers_take_profit(config):
+    """The whole point: an 81% winner must be closed, not carried to expiry."""
+    position = rebuild_positions(condor(), spot=760.0)[0]
+    assert position.profit_captured > config.tp_frac_of_credit
+    expiry = TODAY + timedelta(days=17)
+    position = rebuild_positions(condor(expiry.strftime("%y%m%d")), spot=760.0)[0]
+    assert decide(position, config, TODAY).action is Action.TAKE_PROFIT
+
+
+def test_a_rebuilt_position_in_the_flatten_zone_is_flattened(config):
+    expiry = TODAY + timedelta(days=1)
+    position = rebuild_positions(condor(expiry.strftime("%y%m%d")), spot=760.0)[0]
+    assert decide(position, config, TODAY).action is Action.FLATTEN
+
+
+def test_rebuilt_legs_carry_opening_intents():
+    """Closing intents would make derive_geometry reject the structure outright."""
+    position = rebuild_positions(condor(), spot=760.0)[0]
+    assert {leg.position_intent for leg in position.ticket.legs} == {
+        "sell_to_open",
+        "buy_to_open",
+    }
+
+
+def test_breach_detection_works_on_a_rebuilt_position():
+    breached = rebuild_positions(condor(), spot=745.0)[0]
+    assert breached.breached_short() is not None
+
+
+def test_an_unavailable_spot_disables_breach_detection_only(config):
+    """A zero spot must not fabricate a breach, and must not block other rules."""
+    position = rebuild_positions(condor(), spot=0.0)[0]
+    assert position.breached_short() is None
+    expiry = TODAY + timedelta(days=1)
+    still_flattens = rebuild_positions(condor(expiry.strftime("%y%m%d")), spot=0.0)[0]
+    assert decide(still_flattens, config, TODAY).action is Action.FLATTEN
+
+
+def test_equity_and_partial_legs_are_ignored():
+    noise = [{"symbol": "SPY", "qty": "100", "avg_entry_price": "760", "current_price": "761"}]
+    assert rebuild_positions(noise) == []
+    assert rebuild_positions(condor()[:3]) == []  # a 3-leg remnant is not a structure
+
+
+def test_empty_book_rebuilds_to_nothing():
+    assert rebuild_positions([]) == []
+
+
+# --- 2. daily risk accounting -----------------------------------------------
+
+
+def journal_with(tmp_path, entries):
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for entry in entries:
+            fh.write(json.dumps(entry) + "\n")
+    return Journal(path)
+
+
+def submit(ts, coid, max_loss, intent="open"):
+    return {
+        "ts": ts,
+        "event": "SUBMIT",
+        "intent": intent,
+        "client_order_id": coid,
+        "max_loss": max_loss,
+    }
+
+
+def test_submitted_risk_counts_against_the_daily_budget(tmp_path):
+    """Counting only FILL returned 0.0 forever, so the 2% cap never bound."""
+    j = journal_with(tmp_path, [submit("2026-09-01T14:00:00+00:00", "a", 400.0)])
+    assert j.risk_opened_on(date(2026, 9, 1)) == 400.0
+
+
+def test_risk_is_not_double_counted_when_an_order_also_fills(tmp_path):
+    j = journal_with(tmp_path, [
+        submit("2026-09-01T14:00:00+00:00", "a", 400.0),
+        {"ts": "2026-09-01T14:00:05+00:00", "event": "FILL", "intent": "open",
+         "client_order_id": "a", "max_loss": 400.0},
+    ])
+    assert j.risk_opened_on(date(2026, 9, 1)) == 400.0
+
+
+def test_closing_orders_do_not_add_risk(tmp_path):
+    j = journal_with(tmp_path, [
+        submit("2026-09-01T14:00:00+00:00", "a", 400.0),
+        submit("2026-09-01T15:00:00+00:00", "b", 400.0, intent="close"),
+    ])
+    assert j.risk_opened_on(date(2026, 9, 1)) == 400.0
+
+
+def test_risk_is_scoped_to_the_day(tmp_path):
+    j = journal_with(tmp_path, [
+        submit("2026-08-31T14:00:00+00:00", "old", 400.0),
+        submit("2026-09-01T14:00:00+00:00", "new", 250.0),
+    ])
+    assert j.risk_opened_on(date(2026, 9, 1)) == 250.0
+
+
+def test_accumulated_risk_can_now_exhaust_the_budget(tmp_path, config):
+    """Four 400-dollar positions exceed 2% of 100k; the cap must be reachable."""
+    j = journal_with(tmp_path, [
+        submit(f"2026-09-01T1{i}:00:00+00:00", f"o{i}", 500.0) for i in range(4)
+    ])
+    spent = j.risk_opened_on(date(2026, 9, 1))
+    assert spent == 2000.0
+    assert spent >= config.daily_new_risk_pct * 100_000
+
+
+# --- 3. the dashboard reports the desk's gate -------------------------------
+
+
+def test_api_gate_prefers_the_desks_recorded_result(tmp_path, monkeypatch):
+    """The API holds no MCP session; re-running the gate there always says HALTED."""
+    path = tmp_path / "audit.jsonl"
+    path.write_text(json.dumps({
+        "ts": "2026-09-01T18:00:00+00:00",
+        "event": "STARTUP",
+        "state": "READY",
+        "passed": True,
+        "checks": [{"index": 1, "name": "python_version", "passed": True, "detail": "3.12"}],
+    }) + "\n", encoding="utf-8")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+    from src import api
+
+    payload = api.api_gate()
+    assert payload["state"] == "READY"
+    assert payload["passed"] is True
+    assert payload["source"] == "desk"
+    assert payload["measured_at"] == "2026-09-01T18:00:00+00:00"
+
+
+def test_api_gate_labels_its_own_fallback(tmp_path, monkeypatch):
+    monkeypatch.setenv("OG_JOURNAL", str(tmp_path / "empty.jsonl"))
+    from src import api
+
+    payload = api.api_gate()
+    assert payload["source"] == "api_process_only"
+    assert payload["measured_at"] is None
+
+
+# --- 4. implied volatility is real -------------------------------------------
+
+
+def test_implied_vol_is_parsed_from_the_chain():
+    from src.marketdata import snapshot_to_contract
+
+    contract = snapshot_to_contract("SPY260918P00750000", {
+        "latestQuote": {"bp": 1.20, "ap": 1.25, "t": "2026-09-01T18:00:00Z"},
+        "greeks": {"delta": -0.18},
+        "impliedVolatility": 0.1734,
+    })
+    assert contract.implied_volatility == pytest.approx(0.1734)
+
+
+def test_atm_implied_vol_picks_the_nearest_strike():
+    from decimal import Decimal
+
+    from src.marketdata import atm_implied_vol
+    from src.rolldesk.candidates import ChainContract
+
+    def c(strike, iv):
+        return ChainContract("S", "SPY", date(2026, 9, 18), Decimal(str(strike)), "P",
+                             1.0, 1.1, NOW, -0.2, iv)
+
+    assert atm_implied_vol([c(700, 0.30), c(760, 0.17), c(800, 0.28)], 758.0) == 0.17
+
+
+def test_atm_implied_vol_is_none_when_the_chain_carries_no_iv():
+    from decimal import Decimal
+
+    from src.marketdata import atm_implied_vol
+    from src.rolldesk.candidates import ChainContract
+
+    bare = ChainContract("S", "SPY", date(2026, 9, 18), Decimal("760"), "P", 1.0, 1.1, NOW, -0.2)
+    assert atm_implied_vol([bare], 760.0) is None
+
+
+def test_signals_use_supplied_iv_over_realized_vol():
+    from src.signals_builder import build_signals
+    from src.marketdata import Bar
+
+    closes = [400 + (i % 7) * 0.5 for i in range(120)]
+    bars = [Bar(ts=NOW, high=c + 1, low=c - 1, close=c) for c in closes]
+    signals = build_signals(bars, implied_vol=0.42, now=NOW)
+    assert signals.implied_vol == pytest.approx(0.42)
+    assert signals.implied_vol != pytest.approx(signals.realized_vol)
+
+
+# --- 6. the roll path records what actually happened ------------------------
+
+
+def test_roll_does_not_claim_a_denial_that_never_happened():
+    import inspect
+
+    from src import loop
+
+    source = inspect.getsource(loop.TradingLoop.manage_open_positions)
+    assert "roll_replacement_denied" not in source
+    assert "roll_requested" in source

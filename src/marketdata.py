@@ -66,6 +66,12 @@ def snapshot_to_contract(symbol: str, snapshot: Mapping[str, Any]) -> ChainContr
 
     greeks = snapshot.get("greeks") or {}
     delta = _f(greeks.get("delta"))
+    # Alpaca returns implied vol alongside the greeks. Without this the desk
+    # silently substitutes realized vol and the IV-rank gate measures the wrong
+    # quantity entirely.
+    iv = _f(snapshot.get("impliedVolatility"))
+    if iv is None:
+        iv = _f(greeks.get("impliedVolatility")) or _f(snapshot.get("implied_volatility"))
 
     return ChainContract(
         symbol=symbol,
@@ -77,6 +83,7 @@ def snapshot_to_contract(symbol: str, snapshot: Mapping[str, Any]) -> ChainContr
         ask=ask,
         ts=_timestamp(quote.get("t")),
         delta=delta,
+        implied_volatility=iv if (iv and iv > 0) else None,
     )
 
 
@@ -175,8 +182,11 @@ def atm_implied_vol(contracts: Sequence[ChainContract], spot: float) -> float | 
     """Implied vol of the nearest-the-money contract, if the chain carries it."""
     if not contracts or spot <= 0:
         return None
-    nearest = min(contracts, key=lambda c: abs(float(c.strike) - spot))
-    return getattr(nearest, "implied_volatility", None)
+    quoted = [c for c in contracts if c.implied_volatility]
+    if not quoted:
+        return None
+    nearest = min(quoted, key=lambda c: abs(float(c.strike) - spot))
+    return nearest.implied_volatility
 
 
 def market_clock(mcp: AlpacaMCP) -> tuple[bool, int]:

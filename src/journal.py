@@ -117,14 +117,30 @@ class Journal:
             return False
 
     def risk_opened_on(self, day: date) -> float:
-        """Sum of max_loss across fills on `day`. Feeds the daily-risk budget."""
+        """Max loss committed to opening trades on `day`. Feeds the daily budget.
+
+        Counts SUBMIT as well as FILL: risk is committed the moment a working
+        order exists, not when it fills. Counting fills alone returned 0.0 on
+        every call -- nothing writes a FILL -- so the 2%-per-day cap could never
+        bind and the desk could open positions without limit.
+
+        Entries are deduplicated by client_order_id so an order that is both
+        submitted and filled is not charged to the budget twice.
+        """
         prefix = day.isoformat()
         total = 0.0
+        counted: set[str] = set()
         for entry in self.read():
-            if entry.get("event") != "FILL":
+            if entry.get("event") not in ("SUBMIT", "FILL"):
                 continue
+            if entry.get("intent") not in (None, "open"):
+                continue  # closing an existing structure removes risk, never adds it
             if not str(entry.get("ts", "")).startswith(prefix):
                 continue
+            key = str(entry.get("client_order_id") or entry.get("ticket_id") or id(entry))
+            if key in counted:
+                continue
+            counted.add(key)
             total += float(entry.get("max_loss") or 0.0)
         return total
 

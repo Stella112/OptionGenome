@@ -9,7 +9,7 @@ high-water mark so a restart cannot silently reset a drawdown.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from datetime import date, datetime
+from datetime import date, datetime, timezone
 from decimal import Decimal
 from typing import Any, Mapping, Sequence
 
@@ -18,7 +18,7 @@ from .broker.occ import OCCError, parse_option_symbol
 from .config import Config
 from .journal import Journal
 from .marketdata import market_clock
-from .types import Account, Book, OpenStructure, Quote, SystemState
+from .types import CONTRACT_MULTIPLIER, Account, Book, OpenStructure, Quote, SystemState
 
 
 class ReconcileError(RuntimeError):
@@ -178,6 +178,125 @@ def group_positions_into_structures(
             )
         )
     return tuple(structures)
+
+
+def underlying_price(mcp: AlpacaMCP, symbol: str) -> float:
+    """Best-effort spot for the underlying. 0.0 when unavailable.
+
+    Breach detection needs a live spot, but the desk's required capability set
+    deliberately does not include a stock quote -- adding one would make the
+    startup gate fail on a server that omits it. So this probes optional tools
+    and degrades: a 0.0 spot disables breach detection only, leaving the DTE,
+    profit and stop rules fully in force.
+    """
+    for tool, extract in (
+        ("get_stock_latest_trade", lambda d: d.get("p") or d.get("price")),
+        ("get_stock_latest_quote", lambda d: ((d.get("bp") or 0) + (d.get("ap") or 0)) / 2 or None),
+    ):
+        if tool not in getattr(mcp.capabilities, "discovered", ()):
+            continue
+        try:
+            payload = mcp._call_tool(tool, {"symbols": symbol})
+        except Exception:
+            continue
+        if not isinstance(payload, Mapping):
+            continue
+        # Responses nest per symbol under "trade"/"quote" or by ticker.
+        for candidate in (payload.get("trade"), payload.get("quote"),
+                          (payload.get("trades") or {}).get(symbol) if isinstance(payload.get("trades"), Mapping) else None,
+                          (payload.get("quotes") or {}).get(symbol) if isinstance(payload.get("quotes"), Mapping) else None,
+                          payload.get(symbol), payload):
+            if isinstance(candidate, Mapping):
+                value = _f_or_none(extract(candidate))
+                if value and value > 0:
+                    return value
+    return 0.0
+
+
+def _f_or_none(value: Any) -> float | None:
+    try:
+        return float(value)
+    except (TypeError, ValueError):
+        return None
+
+
+def rebuild_positions(positions: Sequence[Mapping[str, Any]], spot: float = 0.0) -> list:
+    """Rebuild managed PositionStates from the broker's own option legs.
+
+    Without this the lifecycle layer receives nothing and take-profit, the stop,
+    defence, rolls and the mandatory force-flatten never run. The desk would open
+    positions and abandon them.
+
+    Legs are grouped by underlying and expiry. Prices come from the broker, so
+    entry credit and cost-to-close are its numbers, not the desk's memory.
+    """
+    from .rolldesk.lifecycle import PositionState
+    from .types import Leg, Ticket
+
+    grouped: dict[tuple[str, date], list[Mapping[str, Any]]] = {}
+    for pos in positions:
+        try:
+            contract = parse_option_symbol(str(pos.get("symbol", "")))
+        except OCCError:
+            continue
+        grouped.setdefault((contract.underlying, contract.expiry), []).append(pos)
+
+    out = []
+    for (underlying, expiry), legs in sorted(grouped.items()):
+        built: list[Leg] = []
+        entry_credit = 0.0
+        cost_to_close = 0.0
+        lots = 1
+        usable = True
+
+        for pos in legs:
+            qty = _f_or_none(pos.get("qty"))
+            entry = _f_or_none(pos.get("avg_entry_price"))
+            current = _f_or_none(pos.get("current_price"))
+            if qty is None or entry is None or qty == 0:
+                usable = False
+                break
+            size = abs(qty)
+            lots = max(lots, int(size))
+            mark = current if current is not None else entry
+            if qty < 0:  # short: credit received at entry, costs money to buy back
+                built.append(Leg(str(pos["symbol"]), "sell", "sell_to_open", 1))
+                entry_credit += entry * CONTRACT_MULTIPLIER * size
+                cost_to_close += mark * CONTRACT_MULTIPLIER * size
+            else:  # long: paid at entry, returns money when sold
+                built.append(Leg(str(pos["symbol"]), "buy", "buy_to_open", 1))
+                entry_credit -= entry * CONTRACT_MULTIPLIER * size
+                cost_to_close -= mark * CONTRACT_MULTIPLIER * size
+
+        if not usable or len(built) not in (2, 4):
+            continue
+
+        structure = "put_credit_spread" if len(built) == 2 else "iron_condor"
+        out.append(
+            PositionState(
+                ticket=Ticket(
+                    ticket_id=f"{underlying}-{expiry.isoformat()}",
+                    underlying=underlying,
+                    structure_type=structure,
+                    expiry=expiry.isoformat(),
+                    dte=0,
+                    legs=tuple(built),
+                    credit_mid=0.0,
+                    width=0.0,
+                    max_loss=0.0,
+                    short_delta=0.0,
+                    quote_age_ms=0,
+                    regime="MANAGED",
+                    proposed_lots=lots,
+                ),
+                lots=lots,
+                entry_credit=entry_credit,
+                cost_to_close=max(0.0, cost_to_close),
+                underlying_price=spot,
+                opened_at=datetime.now(timezone.utc),
+            )
+        )
+    return out
 
 
 @dataclass(frozen=True)

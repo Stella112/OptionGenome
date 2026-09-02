@@ -77,16 +77,30 @@ def api_config() -> Any:
 
 @app.get("/api/gate")
 def api_gate() -> Any:
-    """Live startup readiness. Shows exactly why the desk is or is not READY."""
+    """The desk's readiness, as the desk itself last measured it.
+
+    This process is read-only and holds no MCP session, so running the gate here
+    would fail every broker-dependent check and report HALTED while the desk is
+    live. The desk journals its full gate result at startup; that is the honest
+    answer, and it is labelled with when it was taken.
+    """
+    for entry in reversed(list(_journal().read())):
+        if entry.get("event") == "STARTUP" and entry.get("checks"):
+            return {
+                "state": entry.get("state"),
+                "passed": bool(entry.get("passed")),
+                "checks": entry.get("checks", []),
+                "measured_at": entry.get("ts"),
+                "source": "desk",
+            }
+
+    # No desk run recorded yet: fall back to the checks this process can do
+    # alone, and say so rather than implying it speaks for the desk.
     result = run_gate()
-    return {
-        "state": result.state.value,
-        "passed": result.passed,
-        "checks": [
-            {"index": o.index, "name": o.name, "passed": o.passed, "detail": o.detail}
-            for o in result.outcomes
-        ],
-    }
+    payload = result.as_dict()
+    payload["measured_at"] = None
+    payload["source"] = "api_process_only"
+    return payload
 
 
 @app.get("/api/journal")
