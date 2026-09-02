@@ -131,6 +131,22 @@ class Journal:
                 continue  # a torn final line must not break the dashboard
         return out
 
+    def count(self) -> int:
+        """Total entries, without decoding any of them.
+
+        api_summary previously reported len(tail(...)), which silently became
+        the tail cap once the journal outgrew it -- the deck displayed a flat
+        5,000 events forever.
+        """
+        if not self.path.exists():
+            return 0
+        total = 0
+        with open(self.path, "rb") as fh:
+            for chunk in iter(lambda: fh.read(1 << 20), b""):
+                total += chunk.count(b"
+")
+        return total
+
     def is_writable(self) -> bool:
         """Startup gate item 17."""
         try:

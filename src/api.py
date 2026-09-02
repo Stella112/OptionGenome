@@ -126,13 +126,14 @@ def api_journal(limit: int = 200, event: str | None = None) -> Any:
     entries = _journal().tail(max(limit * 5, 1000))
     if event:
         entries = [e for e in entries if e.get("event") == event]
-    return {"count": len(entries), "entries": list(reversed(entries[-limit:]))}
+    return {"count": _journal().count(), "entries": list(reversed(entries[-limit:]))}
 
 
 @app.get("/api/summary")
 def api_summary() -> Any:
     """Headline numbers for the dashboard."""
-    entries = _journal().tail(5000)
+    journal = _journal()
+    entries = journal.tail(5000)
     counts = Counter(e.get("event") for e in entries)
 
     latest_regime = next(
@@ -152,7 +153,7 @@ def api_summary() -> Any:
 
     return {
         "events": dict(counts),
-        "total_events": len(entries),
+        "total_events": journal.count(),
         "regime": (latest_regime or {}).get("permission", {}).get("regime"),
         "regime_reasons": (latest_regime or {}).get("permission", {}).get("reasons", []),
         "equity": (latest_reconcile or {}).get("equity"),

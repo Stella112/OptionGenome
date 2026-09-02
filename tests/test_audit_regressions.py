@@ -362,3 +362,18 @@ def test_every_response_forbids_caching(tmp_path, monkeypatch):
         assert response.status_code == 200, path
         cache = response.headers.get("cache-control", "")
         assert "no-store" in cache, f"{path} is cacheable: {cache!r}"
+
+
+def test_event_count_is_not_capped_by_the_tail_window(tmp_path):
+    """total_events was len(tail(5000)), so it froze at the cap as the journal grew."""
+    path = tmp_path / "audit.jsonl"
+    with open(path, "w", encoding="utf-8") as fh:
+        for i in range(6000):
+            fh.write(json.dumps({"ts": "t", "event": "REGIME", "n": i}) + "\n")
+    j = Journal(path)
+    assert j.count() == 6000
+    assert len(j.tail(5000)) == 5000
+
+
+def test_count_of_a_missing_journal_is_zero(tmp_path):
+    assert Journal(tmp_path / "nope.jsonl").count() == 0
