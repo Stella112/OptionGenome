@@ -184,6 +184,36 @@ class Journal:
         self._counts_cache = counts
         return dict(counts)
 
+    def first_equity(self) -> float | None:
+        """Equity at the desk's first reconcile: the baseline for total P&L.
+
+        Read from the head of the file, not the tail window, so the baseline
+        does not drift away as the journal grows. Cached like event_counts.
+        """
+        try:
+            stat = self.path.stat()
+        except OSError:
+            return None
+        if getattr(self, "_first_equity_signature", None) == stat.st_size:
+            return self._first_equity_cache
+
+        value = None
+        with open(self.path, "r", encoding="utf-8") as fh:
+            for line in fh:
+                if '"RECONCILE"' not in line:
+                    continue
+                try:
+                    entry = json.loads(line)
+                except json.JSONDecodeError:
+                    continue
+                if entry.get("equity") is not None:
+                    value = float(entry["equity"])
+                    break
+
+        self._first_equity_signature = stat.st_size
+        self._first_equity_cache = value
+        return value
+
     def is_writable(self) -> bool:
         """Startup gate item 17."""
         try:

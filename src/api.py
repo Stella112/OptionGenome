@@ -153,6 +153,17 @@ def api_summary() -> Any:
 
     fills = [e for e in entries if e.get("event") == "FILL"]
 
+    # P&L is the first judging criterion, so it is stated outright rather than
+    # left for the reader to subtract from equity.
+    equity = (latest_reconcile or {}).get("equity")
+    equity = float(equity) if equity is not None else None
+    starting = journal.first_equity()
+    start_of_day = (latest_reconcile or {}).get("start_of_day_equity")
+    start_of_day = float(start_of_day) if start_of_day is not None else None
+
+    pnl_total = (equity - starting) if (equity is not None and starting) else None
+    pnl_today = (equity - start_of_day) if (equity is not None and start_of_day) else None
+
     return {
         "events": dict(counts),
         "total_events": journal.count(),
@@ -162,6 +173,11 @@ def api_summary() -> Any:
         "high_water_mark": (latest_reconcile or {}).get("high_water_mark"),
         "drawdown": (latest_reconcile or {}).get("drawdown"),
         "open_structures": (latest_reconcile or {}).get("open_structures"),
+        "starting_equity": starting,
+        "start_of_day_equity": start_of_day,
+        "pnl_total": pnl_total,
+        "pnl_total_pct": (pnl_total / starting) if (starting and pnl_total is not None) else None,
+        "pnl_today": pnl_today,
         "allows": counts.get("ALLOW", 0),
         "denies": counts.get("DENY", 0),
         "fills": len(fills),

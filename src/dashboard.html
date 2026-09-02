@@ -242,9 +242,24 @@ function sparkline(points) {
   </svg>`;
 }
 
+/* Signed money, because a P&L figure that hides its sign is useless. */
+const signed = (v) => {
+  if (v == null) return "&mdash;";
+  const n = Number(v);
+  const s = n < 0 ? "−" : "+";
+  return s + "$" + Math.abs(n).toLocaleString(undefined, {minimumFractionDigits: 2, maximumFractionDigits: 2});
+};
+const tone = (v) => v == null ? "" : (v > 0 ? "allow" : (v < 0 ? "deny" : ""));
+
 function figures(s, cfg, eq) {
   const dd = s?.drawdown;
+  const total = s?.pnl_total, today = s?.pnl_today;
   const cards = [
+    ["P&L", signed(total),
+      s?.starting_equity ? `since ${money(s.starting_equity)} start` : "total", tone(total)],
+    ["P&L today", signed(today),
+      s?.pnl_total_pct != null ? `${(s.pnl_total_pct * 100).toFixed(3)}% overall` : "this session",
+      tone(today)],
     ["Equity", money(s?.equity), sparkline(eq?.points) ||
       (s?.high_water_mark ? `peak ${money(s.high_water_mark)}` : ""), ""],
     ["Drawdown", pct(dd), cfg ? `flatten at ${pct(cfg.dd_flatten_pct)}` : "",
@@ -254,10 +269,10 @@ function figures(s, cfg, eq) {
     ["Refused", num(s?.denies ?? 0), "stopped by the officer", "deny"],
     ["Journal", num(s?.total_events), "append-only events", ""],
   ];
-  $("figures").innerHTML = cards.map(([k, v, note, tone]) => `
+  $("figures").innerHTML = cards.map(([k, v, note, t]) => `
     <div class="fig">
       <div class="k">${esc(k)}</div>
-      <div class="v ${tone}">${v}</div>
+      <div class="v ${t}">${v}</div>
       ${note.startsWith("<svg") ? note : `<div class="n">${esc(note)}</div>`}
     </div>`).join("");
 }

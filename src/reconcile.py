@@ -347,6 +347,7 @@ def reconcile(
         account_id=account.account_id,
         equity=account.equity,
         cash=account.cash,
+        start_of_day_equity=account.start_of_day_equity,
         high_water_mark=account.high_water_mark,
         drawdown=round(account.drawdown, 5),
         open_structures=len(structures),
