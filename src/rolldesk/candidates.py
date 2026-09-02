@@ -27,8 +27,25 @@ from .structures import StructureError, derive_geometry
 #: which the spec freezes.
 TARGET_SHORT_DELTAS: tuple[float, ...] = (0.16, 0.25, 0.32)
 
-#: Spread widths to attempt, in strike points, narrowest first.
-CANDIDATE_WIDTHS: tuple[float, ...] = (1.0, 2.0, 5.0)
+#: Spread widths to attempt, in strike points.
+#:
+#: Narrow wings were removed on 2026-09-02 after measuring the real cost on the
+#: live SPY chain. Crossing the bid-ask on four legs, twice, costs roughly the
+#: same in absolute terms whatever the width -- but the credit scales with it:
+#:
+#:      1-wide   credit $ 57   spread ~$18   32% of credit lost to friction
+#:      2-wide   credit $117   spread ~$16   14%
+#:      5-wide   credit $246   spread ~$20    8%
+#:     10-wide   credit $374   spread ~$17    5%
+#:
+#: At one point wide, a third of the gross premium goes to the market maker
+#: before the position does anything. No edge survives that, and the desk's
+#: first four trades lost accordingly.
+#:
+#: Max loss rises with width (about $254 at 5-wide, $626 at 10-wide), and the
+#: Risk Officer still caps any single position at 0.75% of equity, so a fill
+#: worse than expected is refused rather than sized down silently.
+CANDIDATE_WIDTHS: tuple[float, ...] = (5.0, 10.0)
 
 #: A leg wider than this fraction of its own mid is too illiquid to build on.
 #: The Risk Officer applies the stricter spec rule; this is a cheap pre-filter

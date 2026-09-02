@@ -317,3 +317,38 @@ def test_a_held_expiry_does_not_deadlock_the_desk(config):
     assert tickets
     expiries = {t.expiry for t in tickets}
     assert expiries != {(TODAY + timedelta(days=17)).isoformat()}
+
+
+# --- wing width economics ----------------------------------------------------
+
+
+def test_narrow_wings_are_no_longer_built(config):
+    """A 1-wide condor loses ~32% of its credit to the bid-ask on entry and exit.
+
+    Measured on the live SPY chain: the spread cost is roughly constant per
+    structure while credit scales with width, so narrow wings cannot clear it.
+    """
+    from src.rolldesk.candidates import CANDIDATE_WIDTHS
+
+    assert min(CANDIDATE_WIDTHS) >= 5.0
+
+
+def test_wider_structures_still_face_the_risk_cap(config):
+    """Width raises max loss, so the officer must still be able to refuse it."""
+    from src.risk.officer import evaluate
+    from src.types import Account, Book
+
+    chain = []
+    for days in (4, 9):
+        chain += synthetic_chain(TODAY + timedelta(days=days))
+    tickets = generate_candidates(chain, income(), config, TODAY, NOW)
+    assert tickets
+
+    quotes = {c.symbol: c.as_quote() for c in chain}
+    # 0.75% of a small account is a few dollars: every candidate must be refused.
+    tiny = Account("DEV-1", "DEV-1", 5_000.0, 5_000.0, 20_000.0, 3, 5_000.0, 5_000.0)
+    book = Book(quotes=quotes, now=NOW, market_open=True, minutes_to_close=180)
+    for ticket in tickets:
+        decision = evaluate(ticket, book, tiny, income(), config, today=TODAY)
+        assert not decision.allowed
+        assert any("max_loss_pct_exceeded" in r for r in decision.reasons)
