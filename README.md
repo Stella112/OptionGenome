@@ -2,6 +2,14 @@
 
 An autonomous defined-risk options desk running against **Alpaca paper trading only**.
 
+| | |
+|---|---|
+| **One-page write-up** | **[docs/WRITEUP.md](docs/WRITEUP.md)** — AI logic, risk gates, Alpaca infrastructure |
+| Live dashboard | https://optiongenome.duckdns.org |
+| Slide deck | https://optiongenome.duckdns.org/deck |
+| Alpaca paper account | `PA3Y88DE6VC4` |
+| Submission copy | [docs/SUBMISSION.md](docs/SUBMISSION.md) |
+
 Two strictly separated layers, one-way authority:
 
 ```
