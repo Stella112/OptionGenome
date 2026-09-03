@@ -5,34 +5,26 @@ OptionGenome
 An autonomous options trading desk on Alpaca paper trading where the AI is the least-trusted part. Code builds and checks every trade; the model only ranks a shortlist, and a deterministic Risk Officer can overrule it. 2,057 decisions, 6 trades.
 
 === LONG ===
-Most trading agents ask an LLM what to trade and then do it. The model always answers, and it never says "nothing looks good, don't trade." In trading, not trading is most of the job.
+Most trading agents ask an LLM what to trade and then do it. The model always answers. It never says "nothing looks good right now, don't trade," and in trading, not trading is most of the job.
 
 OptionGenome flips that. The model is the least-trusted component in the system.
 
 HOW IT WORKS
 
-MarketDNA classifies the market from arithmetic only: EMA20/50, ADX(14), realized vs implied volatility, IV rank, and an economic-events calendar. It outputs a permission set (which structures are legal, how many lots), never an order. It withholds permission entirely when implied vol is not at least 5% above realized, the one condition where selling premium has no edge.
+MarketDNA classifies the market from arithmetic only (EMA, ADX, realized vs implied volatility, IV rank, an events calendar) and outputs a permission set: which structures are legal and how many lots. Never an order. It withholds permission when implied vol is not above realized, the one case where selling premium has no edge.
 
-Roll Desk screens the live SPY option chain (about 2,000 contracts) and builds fully specified defined-risk candidates: put credit spreads and iron condors, 5 and 10 points wide, shorts near 0.16 to 0.28 delta, ranked on credit net of round-trip bid-ask cost per dollar of risk.
+Roll Desk screens the live SPY option chain and builds fully specified defined-risk candidates: put credit spreads and iron condors, 5 and 10 wide, ranked on credit net of bid-ask cost per dollar of risk.
 
-Qwen-2.5-72B (via Featherless) picks one and writes one sentence why. That is its entire authority. It cannot change a strike, expiry, size or price. It never sees equity, buying power, the risk budget or the rules. Its reply is parsed as hostile input: shape-checked, ID verified against the shortlist, extra keys ignored. "override_risk_officer": true changes nothing.
+Qwen-2.5-72B (Featherless) picks one and writes one sentence why. That is its entire authority. It cannot change a strike, expiry, size or price. It never sees equity, buying power, the risk budget or the rules. Its reply is parsed as hostile input.
 
-The Risk Officer runs 15 deterministic checks and is the only thing that can commit capital. It does not trust the ticket: width, credit, max loss, DTE and every leg relationship are recalculated from OCC symbols and live quotes. All checks run, so a refusal lists every reason. Any exception is a DENY. Limits: max loss 0.75% of equity, 2% new risk per day, 5% drawdown to flatten-only, one lot, three open structures.
+The Risk Officer runs 15 deterministic checks and is the only thing that can commit capital. It recalculates width, credit, max loss and DTE from live quotes instead of trusting the ticket. Any exception is a DENY. Open positions are re-checked every pass: take profit at 50%, stop at 2x, flatten at 1 DTE.
 
-Every open position is re-evaluated each pass: take profit at 50% of credit, stop at 2x, mandatory flatten at 1 DTE.
-
-ALPACA
-
-All reads go through the MCP server (72 tools discovered at runtime, none hardcoded). All writes go through the Alpaca CLI (mleg, limit, day). A test walks the source tree and fails the build if anything crosses that boundary.
+All reads go through Alpaca's MCP server, all writes through the Alpaca CLI, and a test fails the build if anything crosses that line.
 
 WHAT RUNNING IT LIVE CAUGHT
 
-Bugs a green test suite missed: capability discovery matched a read tool to an order-placing tool. Credits were sent with the wrong sign, so every fill was worse than the limit. 49ms of clock skew denied every trade. Each is now a named constant with a regression test.
+Bugs a green test suite missed: a read tool matched to an order-placing tool. Credits sent with the wrong sign. 49ms of clock skew denying every trade. Each is now a regression test.
 
-EVIDENCE
+Every decision lands in an append-only journal. The dashboard shows the last one end to end: what the model chose, and what the Risk Officer did about it.
 
-Every decision lands in an append-only fsynced journal. The dashboard shows the last decision end to end: what the model chose, in its own words, and what the Risk Officer did about it.
-
-2,057 decisions so far. It refused 2,051 of them. Down $96 on $100k paper, and every dollar is accounted for.
-
-Paper trading only.
+2,057 decisions. It refused 2,051. Down $96 on $100k paper, every dollar accounted for. Paper trading only.
