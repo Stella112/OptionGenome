@@ -504,3 +504,55 @@ def test_an_open_structure_has_no_realised_pnl(tmp_path, monkeypatch):
     assert payload["trades"][0]["open"] is True
     assert payload["trades"][0]["realized"] is None
     assert payload["realized_total"] == 0.0
+
+
+# --- 14. legs resolve to the actual buy and sell orders ---------------------
+
+
+def test_condor_legs_resolve_to_the_right_sides():
+    """Buy the lowest put, sell the next; sell the lower call, buy the highest."""
+    from src.api import describe_legs
+
+    legs = describe_legs([
+        "SPY260910P00759000", "SPY260910P00760000",
+        "SPY260910C00771000", "SPY260910C00772000",
+    ], "iron_condor")
+    by_symbol = {l["symbol"]: l for l in legs}
+    assert by_symbol["SPY260910P00759000"]["side"] == "buy"
+    assert by_symbol["SPY260910P00760000"]["side"] == "sell"
+    assert by_symbol["SPY260910C00771000"]["side"] == "sell"
+    assert by_symbol["SPY260910C00772000"]["side"] == "buy"
+
+
+def test_shorts_are_listed_before_the_protection():
+    from src.api import describe_legs
+
+    legs = describe_legs([
+        "SPY260910P00759000", "SPY260910P00760000",
+        "SPY260910C00771000", "SPY260910C00772000",
+    ], "iron_condor")
+    assert [l["side"] for l in legs] == ["sell", "sell", "buy", "buy"]
+
+
+def test_put_credit_spread_sells_the_higher_strike():
+    from src.api import describe_legs
+
+    legs = describe_legs(["SPY260910P00755000", "SPY260910P00760000"], "put_credit_spread")
+    by_symbol = {l["symbol"]: l for l in legs}
+    assert by_symbol["SPY260910P00760000"]["side"] == "sell"
+    assert by_symbol["SPY260910P00755000"]["side"] == "buy"
+
+
+def test_strike_and_right_are_carried_through():
+    from src.api import describe_legs
+
+    leg = describe_legs(["SPY260910C00771000"], "iron_condor")[0]
+    assert leg["strike"] == 771.0
+    assert leg["right"] == "C"
+
+
+def test_unparseable_symbols_are_dropped_not_guessed():
+    from src.api import describe_legs
+
+    assert describe_legs(["NOT-AN-OCC-SYMBOL"], "iron_condor") == []
+    assert describe_legs([], "iron_condor") == []

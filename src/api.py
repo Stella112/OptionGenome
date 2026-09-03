@@ -186,6 +186,51 @@ def api_summary() -> Any:
     }
 
 
+def describe_legs(symbols: list, structure: str) -> list[dict]:
+    """Turn OCC symbols into the buy and sell orders a reader can follow.
+
+    Side is derived from the structure's geometry rather than stored, so this
+    also works for trades already in the journal. Both permitted structures have
+    exactly one arrangement:
+
+      put credit spread - sell the higher strike, buy the lower as protection
+      iron condor       - buy the lowest put, sell the next; sell the lower
+                          call, buy the highest as protection
+
+    That is the same geometry structures.py validates before a ticket is built,
+    so it cannot disagree with what was actually sent.
+    """
+    from .broker.occ import OCCError, parse_option_symbol
+
+    parsed = []
+    for symbol in symbols or []:
+        try:
+            contract = parse_option_symbol(str(symbol))
+        except OCCError:
+            continue
+        parsed.append({
+            "symbol": str(symbol),
+            "strike": float(contract.strike),
+            "right": contract.right,
+            "side": None,
+        })
+
+    puts = sorted([l for l in parsed if l["right"] == "P"], key=lambda l: l["strike"])
+    calls = sorted([l for l in parsed if l["right"] == "C"], key=lambda l: l["strike"])
+
+    if structure == "iron_condor" and len(puts) == 2 and len(calls) == 2:
+        puts[0]["side"], puts[1]["side"] = "buy", "sell"
+        calls[0]["side"], calls[1]["side"] = "sell", "buy"
+    elif len(puts) == 2 and not calls:
+        puts[0]["side"], puts[1]["side"] = "buy", "sell"
+    elif len(calls) == 2 and not puts:
+        calls[0]["side"], calls[1]["side"] = "sell", "buy"
+
+    # Short legs first: they are the position, the longs are the protection.
+    order = {"sell": 0, "buy": 1, None: 2}
+    return sorted(puts + calls, key=lambda l: (order[l["side"]], l["strike"]))
+
+
 def _signed_credit(price: Any) -> float | None:
     """Credit received on an opening fill, as a positive number.
 
@@ -382,7 +427,7 @@ def api_trades() -> Any:
             "exit_cost": cost,
             "realized": realized,
             "open": exit_ is None,
-            "legs": entry.get("legs") or [],
+            "legs": describe_legs(entry.get("legs") or [], entry.get("structure")),
         })
 
     trades.sort(key=lambda t: t.get("opened_at") or "", reverse=True)

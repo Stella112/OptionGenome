@@ -233,7 +233,17 @@
   .trade .pnl { font-family: var(--mono); font-size: 13px; font-variant-numeric: tabular-nums; text-align: right; }
   .trade .pnl.up { color: var(--allow); }
   .trade .pnl.down { color: var(--deny); }
-  .trade .legs { grid-column: 2 / -1; font-family: var(--mono); font-size: 10.5px; color: var(--ink-faint); overflow-wrap: anywhere; }
+  .trade .legs { grid-column: 1 / -1; margin-top: 9px; display: grid; gap: 3px; }
+  .leg {
+    display: grid; grid-template-columns: 46px 62px 54px 1fr;
+    gap: 10px; align-items: baseline;
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+  }
+  .leg .side { font-weight: 600; letter-spacing: .06em; }
+  .leg .side.sell { color: var(--deny); }
+  .leg .side.buy { color: var(--allow); }
+  .leg .strike { color: var(--ink-soft); font-variant-numeric: tabular-nums; text-align: right; }
+  .leg .role { color: var(--ink-faint); }
   .badge { font: 600 9.5px/1.6 var(--mono); letter-spacing: .1em; padding: 2px 7px; border-radius: 2px; border: 1px solid currentColor; }
   .badge.open { color: var(--brass); }
   .badge.closed { color: var(--ink-faint); }
@@ -660,7 +670,13 @@ function trades(t) {
       <span class="px">+${(t.entry_credit ?? 0).toFixed(2)} cr</span>
       <span class="px">${t.exit_cost != null ? "−" + t.exit_cost.toFixed(2) + " db" : "&mdash;"}</span>
       <span class="pnl ${cls}">${pnl == null ? "&mdash;" : signed(pnl)}</span>
-      <span class="legs">${t.legs.map(esc).join("  ")}</span>
+      <span class="legs">${(t.legs || []).map(l => `
+        <span class="leg">
+          <span class="side ${esc(l.side || "")}">${esc((l.side || "?").toUpperCase())}</span>
+          <span class="strike">${l.strike != null ? l.strike.toFixed(0) : "&mdash;"}</span>
+          <span>${l.right === "P" ? "PUT" : l.right === "C" ? "CALL" : ""}</span>
+          <span class="role">${l.side === "sell" ? "short &mdash; the position" : "long &mdash; caps the loss"}</span>
+        </span>`).join("")}</span>
     </div>`;
   }).join("");
 }
