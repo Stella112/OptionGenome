@@ -25,7 +25,7 @@ from .structures import StructureError, derive_geometry
 #: drive candidate DIVERSITY, not risk: every resulting ticket still faces the
 #: full Risk Officer. Deliberately module-level rather than in config.yaml,
 #: which the spec freezes.
-TARGET_SHORT_DELTAS: tuple[float, ...] = (0.16, 0.22, 0.30)
+TARGET_SHORT_DELTAS: tuple[float, ...] = (0.16, 0.22, 0.28)
 #: Measured on the live SPY chain at 5-wide, where friction is roughly fixed
 #: per structure and credit rises with delta:
 #:

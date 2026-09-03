@@ -98,20 +98,22 @@ class LifecycleDecision:
 
     @property
     def closes_position(self) -> bool:
-        """DEFEND closes too.
+        """DEFEND does NOT close. It marks a position as tested, nothing more.
 
-        This desk builds no replacement structures, so on a breached short the
-        only two honest options are to close or to do nothing. Doing nothing
-        while recording a "defence" was the previous behaviour and it was a lie.
-        A tested short near expiry carries the gamma risk spec section 14 names
-        as the cost of trading short-dated, so the breach is closed.
+        Closing on a touched short was tried on 2026-09-03 and was a clear
+        mistake: four trades, four DEFEND closes, a 0% win rate. SPY ground
+        upward and tagged the short calls at 765, 771 and 772; each tag
+        instantly realised a loss, paid the spread again, and threw away every
+        remaining day of time value. One closed at 41% of credit lost when the
+        2x stop would not have fired until 100%.
+
+        A short strike being touched with ten days left is ordinary and often
+        recovers. Risk is already defined by the long wing, and three exits
+        already govern the position: take profit at 50%, the 2x stop, and the
+        mandatory flatten at 1 DTE. Adding a fourth that fires on first touch
+        converts every recoverable position into a certain loss.
         """
-        return self.action in (
-            Action.TAKE_PROFIT,
-            Action.FLATTEN,
-            Action.EXPIRE,
-            Action.DEFEND,
-        )
+        return self.action in (Action.TAKE_PROFIT, Action.FLATTEN, Action.EXPIRE)
 
     @property
     def needs_new_ticket(self) -> bool:

@@ -149,13 +149,32 @@ def test_put_short_breached_when_spot_falls_through_it(config):
     assert action(pos, config) is Action.DEFEND
 
 
-def test_a_breach_actually_closes_the_position(config):
-    """DEFEND used to fall through every branch and do nothing at all."""
-    from src.rolldesk.lifecycle import LifecycleDecision
+def test_a_touched_short_is_not_an_exit(config):
+    """Closing on first touch produced four trades and a 0% win rate.
 
+    A short tagged with ten days left usually recovers, risk is already capped
+    by the long wing, and the stop and forced flatten still govern the trade.
+    """
     decision = decide(position(spot=639.0), config, TODAY)
     assert decision.action is Action.DEFEND
-    assert decision.closes_position, "a breach that closes nothing is not a defence"
+    assert not decision.closes_position
+
+
+def test_a_breached_position_still_stops_out_on_the_multiple(config):
+    """Not closing on touch must not mean never closing."""
+    breached_and_losing = position(spot=639.0, entry_credit=100.0, cost_to_close=210.0)
+    assert action(breached_and_losing, config) is Action.FLATTEN
+
+
+def test_a_breached_position_is_still_force_flattened_near_expiry(config):
+    near = position(spot=639.0, expiry=TODAY + timedelta(days=1))
+    assert action(near, config) is Action.FLATTEN
+
+
+def test_a_breached_position_can_still_be_taken_for_profit(config):
+    """A tag that recovers must be allowed to reach the profit target."""
+    recovered = position(spot=639.0, entry_credit=100.0, cost_to_close=40.0)
+    assert action(recovered, config) is Action.TAKE_PROFIT
 
 
 def test_put_short_not_breached_above_the_strike(config):
@@ -239,7 +258,7 @@ def test_closed_market_still_flattens_inside_the_zone(config):
         (Action.FLATTEN, True),
         (Action.EXPIRE, True),
         (Action.HOLD, False),
-        (Action.DEFEND, True),
+        (Action.DEFEND, False),
         (Action.ROLL, False),
     ],
 )

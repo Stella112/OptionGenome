@@ -118,7 +118,8 @@ class TradingLoop:
             # DEFEND used to fall through both branches below and take no action
             # at all, while the journal reported a defence that never happened.
             if verdict.action is Action.DEFEND:
-                action_taken = "closing_breached_structure"
+                # Recorded, deliberately not acted on. See closes_position.
+                action_taken = "monitored_only"
             elif verdict.closes_position:
                 action_taken = "closing_position"
             elif verdict.action is Action.ROLL:
@@ -135,7 +136,10 @@ class TradingLoop:
                 action_taken=action_taken,
             )
 
-            if verdict.closes_position:
+            if verdict.action is Action.DEFEND:
+                # The stop and the forced flatten still govern this position.
+                result.notes.append(f"defend_monitored:{position.ticket.ticket_id}")
+            elif verdict.closes_position:
                 self._close(position, state, result)
             elif verdict.action is Action.ROLL:
                 # A roll is a brand-new position request. No replacement is built
