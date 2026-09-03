@@ -1,9 +1,9 @@
 # Demo video script — OptionGenome
 
-**≈2:45. Screen recording, voiceover. You never appear on camera.**
+**≈3:00. Screen recording, voiceover. You never appear on camera.**
 
 Written to be *spoken*, not read. Short sentences. Contractions. Say it flat and let the
-screen do the work — the strongest lines here are the ones you don't push.
+screen carry it — the strongest lines here are the ones you don't push.
 
 Check the dashboard before recording and say whatever it actually shows.
 
@@ -13,51 +13,81 @@ Check the dashboard before recording and say whatever it actually shows.
 
 - One browser tab. `https://optiongenome.duckdns.org`. Nothing else visible.
 - Hard-refresh so the numbers are current.
-- **Close your terminal.** If `.env` shows up on screen your API keys are in the video forever.
+- **Close your terminal.** If `.env` appears on screen your API keys are in the video forever.
 - 1080p, browser at ~110% zoom.
 - Scroll slowly. Slower than feels right.
 
 ---
 
-## 0:00 — Open cold
+## 0:00 — What it is
 
-*Top of the dashboard. Don't introduce yourself. Don't say "let me show you."*
+*Top of the dashboard. No throat-clearing, no "hi, my name is."*
 
-> Two thousand and twenty-seven decisions today.
+> This is OptionGenome. It's an options trading desk that runs itself.
 >
-> It refused all but six.
+> Today it made two thousand and twenty-seven decisions.
 
 *(beat)*
 
-> Which is exactly what I built it to do.
+> It refused all but six.
 
 ---
 
-## 0:15 — What it is
+## 0:20 — The problem
 
-*Scroll to **How authority flows**. Let the diagram sit. Don't narrate the boxes.*
+*Stay at the top. Don't scroll yet — let them hear this.*
 
-> This is an options desk that runs itself on Alpaca paper trading. Everything flows one
-> direction.
+> Almost every trading agent right now works the same way. You give a language model some
+> market data and it tells you what to buy.
 >
-> MarketDNA decides what's legal — that part's pure arithmetic, no model anywhere near it.
-> Roll Desk builds the structures. The model ranks them. The Risk Officer decides whether any
-> money actually moves.
+> The trouble is what those models are actually good at. They're excellent at producing a
+> confident, plausible-sounding trade. They're terrible at saying "no, not this one."
+>
+> Give one authority over real money and it'll do something stupid — fluently, with a good
+> explanation attached.
+
+---
+
+## 0:45 — The solution
+
+> So I flipped it round. Here, the model is the least-trusted thing in the system.
+>
+> It never decides anything. It ranks a shortlist that deterministic code has already built
+> and checked, and code can throw its pick straight in the bin.
+>
+> What it actually trades is defined-risk options spreads on SPY. It sells a spread, collects
+> a premium, and the worst case is capped before the position opens. Then it manages every
+> one of them to exit on its own — no one's watching it.
+
+---
+
+## 1:10 — How it works
+
+*Scroll to **How authority flows**. Let the diagram sit. Don't read the boxes aloud.*
+
+> Everything moves one direction.
+>
+> MarketDNA decides what's legal right now — that part's pure arithmetic, no model anywhere
+> near it. Roll Desk builds the structures. The model ranks them. The Risk Officer decides
+> whether any money actually moves.
 
 *(beat)*
 
 > See where the model sits? Inside the chain. Dashed box. It's fenced in.
+>
+> Reads come back through Alpaca's MCP server. Writes leave only through the Alpaca CLI.
+> Nothing else touches the broker.
 
 ---
 
-## 0:40 — One decision, all the way through
+## 1:35 — One decision, all the way through
 
 *Scroll to **The last decision, end to end**. This is the section that matters. Take your time.*
 
 > Here's a real decision.
 >
 > MarketDNA reads the tape. Roll Desk builds three defined-risk condors off the live option
-> chain. The model picks one — and that's its actual reasoning, word for word.
+> chain. The model picks one — that's its actual reasoning, word for word.
 
 *(pause on the quote — two full seconds)*
 
@@ -81,11 +111,11 @@ Check the dashboard before recording and say whatever it actually shows.
 
 ---
 
-## 1:20 — It watches its own results
+## 2:10 — It watches its own results
 
 *Scroll to **Learning from its own record**.*
 
-> It tracks the conditions behind every trade it closes. Delta, width, regime, how rich
+> It also tracks the conditions behind every trade it closes. Delta, width, regime, how rich
 > volatility was going in.
 >
 > Four closed trades. It needs a hundred and twenty before it'll draw a conclusion. So it says
@@ -98,12 +128,11 @@ Check the dashboard before recording and say whatever it actually shows.
 
 ---
 
-## 1:45 — What running it live caught
+## 2:30 — What running it live caught
 
 *Scroll to **What running it live actually caught**.*
 
-> Every one of these got past a green test suite. They only turned up once real orders were
-> moving.
+> All of these got past a green test suite. They only turned up once real orders were moving.
 >
 > Capability discovery matched a *read* to an order-*placing* tool. Reading the order book
 > would have placed an order.
@@ -113,15 +142,15 @@ Check the dashboard before recording and say whatever it actually shows.
 *(beat)*
 
 > And the last one's mine. I made it close positions the second a short got touched. Four
-> trades, four losses. It's on the list with what it cost.
+> trades, four losses. It's on the list, with what it cost.
 
 ---
 
-## 2:10 — The trades, and the number
+## 2:50 — The trades, and the number
 
 *Scroll to **Trades**. Leg detail visible.*
 
-> Every trade, down to the individual buy and sell orders. Shorts in red. The protection that
+> Every trade, down to the individual buy and sell orders. Shorts in red, the protection that
 > caps the loss underneath.
 >
 > And the number — down ninety-six dollars on a hundred thousand. Six trades, one lot each,
@@ -134,9 +163,9 @@ Check the dashboard before recording and say whatever it actually shows.
 
 ---
 
-## 2:35 — Out
+## 3:10 — Out
 
-*Scroll back to the top. Let the READY badge and the pulse sit there.*
+*Scroll back to the top. Let the READY badge and the pulse sit.*
 
 > Six hundred and ninety-three tests. Every decision in an append-only journal.
 >
@@ -149,23 +178,25 @@ Check the dashboard before recording and say whatever it actually shows.
 ## Delivery
 
 **Confidence is flatness.** Don't sell it. The refusal, the struck-through list, the −$96 —
-those land harder said plainly than emphasised. If a line feels like it needs a push, it
-doesn't.
+all of those land harder said plainly. If a line feels like it needs a push, it needs to be
+shorter, not louder.
 
-**Pause where marked.** Every beat is somewhere the viewer needs a second to read the screen.
+**Pause where marked.** Every beat is a place the viewer needs a second to read the screen.
 Dead air is fine.
 
 **Don't say:** "as you can see", "let me show you", "what's interesting here is", "this is not
-X, it's Y". Just say the thing.
+X, it's Y". Those are the tells.
 
-**Don't explain what's on screen.** They can read. Talk about what it *means*.
+**Don't narrate the screen.** They can read it. Say what it *means*.
 
-If you fluff a line, stop, breathe, restart that section. Don't apologise on the recording.
+Fluff a line? Stop, breathe, restart that section. Never apologise on the recording.
 
 ---
 
-## 60-second cut
+## If you need it shorter
 
-Cold open → the decision at 0:40 → the −$96 line → "Still running."
+**90 seconds:** *What it is* (0:00) → *The problem* (0:20) → *The solution* (0:45) → *One
+decision* (1:35) → the −$96 line → "Still running."
 
-That's the whole argument. Everything else is supporting material.
+Cut the architecture, the learning panel and the bug list. The problem and the refusal are the
+argument; everything else is evidence for it.
