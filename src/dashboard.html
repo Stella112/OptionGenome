@@ -122,6 +122,31 @@
   .fig .n { font-size: 11.5px; color: var(--ink-faint); margin-top: 7px; font-family: var(--mono); }
   .spark { display: block; width: 100%; height: 30px; margin-top: 8px; }
 
+  /* --- architecture: one direction of authority ------------------------- */
+  .arch { padding: 16px 17px 6px; }
+  .arch svg { width: 100%; height: auto; display: block; }
+  .arch .cap {
+    font-family: var(--mono); font-size: 11.5px; color: var(--ink-faint);
+    padding: 10px 2px 8px; line-height: 1.6;
+  }
+  .arch .cap b { color: var(--ink-soft); font-weight: 600; }
+
+  /* --- what running it live actually cost ------------------------------- */
+  .bugs { padding: 4px 17px 16px; }
+  .bug { padding: 14px 0; border-bottom: 1px solid var(--rule); }
+  .bug:last-child { border-bottom: 0; }
+  .bug .h { display: flex; gap: 10px; align-items: baseline; flex-wrap: wrap; margin-bottom: 5px; }
+  .bug .code { font-family: var(--mono); font-size: 11.5px; color: var(--deny); }
+  .bug .tag {
+    font: 600 9.5px/1.6 var(--mono); letter-spacing: .1em; text-transform: uppercase;
+    color: var(--ink-faint); border: 1px solid var(--rule); border-radius: 2px; padding: 1px 6px;
+  }
+  .bug .what { font-size: 13.5px; color: var(--ink-soft); line-height: 1.5; max-width: 78ch; }
+  .bug .cost {
+    font-size: 13px; color: var(--ink); margin-top: 5px; max-width: 78ch;
+    border-left: 2px solid var(--deny); padding-left: 11px;
+  }
+
   /* --- the decision path: one pass, end to end -------------------------- */
   .path { display: grid; gap: 0; padding: 4px 17px 16px; }
   .step { display: grid; grid-template-columns: 20px 1fr; gap: 0 14px; }
@@ -252,6 +277,73 @@
   <div class="figures" id="figures"></div>
 
   <section class="panel" style="margin-top:22px">
+    <h2>How authority flows <span class="count">one direction only</span></h2>
+    <div class="arch">
+      <svg viewBox="0 0 980 200" role="img"
+           aria-label="MarketDNA sets permissions, Roll Desk builds candidates, the model ranks them, the Risk Officer decides, the CLI submits. Reads come back from the MCP server.">
+        <defs>
+          <marker id="a" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+            <path d="M0,0 L10,5 L0,10 z" fill="var(--rule)"/>
+          </marker>
+        </defs>
+
+        <!-- chain -->
+        <g font-family="var(--mono)" font-size="11">
+          <rect x="4"   y="52" width="150" height="60" rx="3" fill="var(--panel-2)" stroke="var(--rule)"/>
+          <text x="79"  y="76"  text-anchor="middle" fill="var(--brass)" font-size="10" letter-spacing="1.4">MARKETDNA</text>
+          <text x="79"  y="95"  text-anchor="middle" fill="var(--ink-soft)">what is legal</text>
+
+          <rect x="200" y="52" width="150" height="60" rx="3" fill="var(--panel-2)" stroke="var(--rule)"/>
+          <text x="275" y="76"  text-anchor="middle" fill="var(--brass)" font-size="10" letter-spacing="1.4">ROLL DESK</text>
+          <text x="275" y="95"  text-anchor="middle" fill="var(--ink-soft)">builds candidates</text>
+
+          <!-- the model: dashed, because it is fenced in -->
+          <rect x="396" y="52" width="150" height="60" rx="3" fill="none"
+                stroke="var(--ink-faint)" stroke-dasharray="4 3"/>
+          <text x="471" y="76"  text-anchor="middle" fill="var(--ink-faint)" font-size="10" letter-spacing="1.4">THE MODEL</text>
+          <text x="471" y="95"  text-anchor="middle" fill="var(--ink-faint)">returns one id</text>
+
+          <rect x="592" y="46" width="150" height="72" rx="3" fill="var(--deny-soft)" stroke="var(--deny)"/>
+          <text x="667" y="72"  text-anchor="middle" fill="var(--deny)" font-size="10" letter-spacing="1.4">RISK OFFICER</text>
+          <text x="667" y="91"  text-anchor="middle" fill="var(--ink-soft)">recalculates all</text>
+          <text x="667" y="107" text-anchor="middle" fill="var(--ink-soft)">ALLOW or DENY</text>
+
+          <rect x="788" y="52" width="150" height="60" rx="3" fill="var(--panel-2)" stroke="var(--rule)"/>
+          <text x="863" y="76"  text-anchor="middle" fill="var(--brass)" font-size="10" letter-spacing="1.4">ALPACA CLI</text>
+          <text x="863" y="95"  text-anchor="middle" fill="var(--ink-soft)">every write</text>
+        </g>
+
+        <g stroke="var(--rule)" stroke-width="1.4" marker-end="url(#a)" fill="none">
+          <path d="M154,82 L196,82"/>
+          <path d="M350,82 L392,82"/>
+          <path d="M546,82 L588,82"/>
+          <path d="M742,82 L784,82"/>
+        </g>
+
+        <!-- reads come back the other way, and only reads -->
+        <path d="M863,124 L863,160 L79,160 L79,120" stroke="var(--rule)" stroke-width="1.2"
+              stroke-dasharray="3 3" fill="none" marker-end="url(#a)"/>
+        <text x="471" y="176" text-anchor="middle" font-family="var(--mono)" font-size="10.5"
+              fill="var(--ink-faint)">MCP server &#183; 72 tools discovered at runtime &#183; reads only</text>
+
+        <text x="471" y="28" text-anchor="middle" font-family="var(--mono)" font-size="10.5"
+              fill="var(--ink-faint)">no reverse path &#183; nothing downstream can grant itself permission</text>
+      </svg>
+      <div class="cap">
+        The model sits inside the chain, not above it. It cannot write a strike, a size or a
+        limit, cannot call a broker tool, and <b>the Risk Officer recalculates every number it
+        is handed</b> rather than trusting it. Reads come back through MCP; writes leave only
+        through the CLI, and a test fails the build if anything crosses that line.
+      </div>
+    </div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
+    <h2>What running it live actually caught <span class="count">tests passed &#183; reality disagreed</span></h2>
+    <div class="bugs" id="bugs"></div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
     <h2>The last decision, end to end <span class="count" id="path-at"></span></h2>
     <div class="path" id="path"><div class="empty">loading</div></div>
   </section>
@@ -381,6 +473,56 @@ const WHY = {
   allowed_lots_below_one: "Sizing came out below one lot",
 };
 const explain = (code) => WHY[String(code).split(":")[0]] || String(code).split(":")[0].replace(/_/g, " ");
+
+/* Defects that a green test suite did not find. Every one needed a live broker,
+   and each is now a named constant with a regression test. */
+const BUGS = [
+  {
+    code: "get_open_orders \u2192 place_stock_order",
+    tag: "capability discovery",
+    what: "Tool names were matched by substring, and \u201corder\u201d appears in both the read and the write.",
+    cost: "Reading the order book would have placed an order.",
+  },
+  {
+    code: "limit_price sent positive",
+    tag: "order construction",
+    what: "Alpaca signs a multi-leg limit by cash flow \u2014 a credit must go out negative. Sent positive, it reads as \u201cI will pay up to this\u201d, a cap any credit satisfies.",
+    cost: "Every entry filled below the limit we thought we had set \u2014 up to 23% of the premium, on all four of the first trades.",
+  },
+  {
+    code: "open_positions = []",
+    tag: "lifecycle",
+    what: "The production loop handed the lifecycle layer an empty list, while 39 tests covering it passed.",
+    cost: "Take-profit, the stop and the forced flatten had never once run. Positions were opened and abandoned \u2014 one sat at 81% of max profit, unclosed.",
+  },
+  {
+    code: "high_water_mark = current equity",
+    tag: "drawdown",
+    what: "The peak was seeded from the equity being measured, so the drawdown was zero by construction.",
+    cost: "An account down 6% would have looked healthy and kept trading.",
+  },
+  {
+    code: "quote_timestamp_in_future: -49ms",
+    tag: "clock skew",
+    what: "Alpaca stamps quotes on its own clock. Any timestamp ahead of ours was treated as an anomaly.",
+    cost: "Every single ticket denied. Trading would have been blocked for the whole competition.",
+  },
+  {
+    code: "DEFEND \u2192 close",
+    tag: "my own mistake",
+    what: "I made a touched short strike close the position. A tag with ten days left is ordinary and often recovers.",
+    cost: "Four trades, four breach-closes, a 0% win rate. One gave back 41% of its credit when the stop would not have fired until 100%. Reverted.",
+  },
+];
+
+function bugs() {
+  $("bugs").innerHTML = BUGS.map(b => `
+    <div class="bug">
+      <div class="h"><span class="code">${esc(b.code)}</span><span class="tag">${esc(b.tag)}</span></div>
+      <div class="what">${esc(b.what)}</div>
+      <div class="cost">${esc(b.cost)}</div>
+    </div>`).join("");
+}
 
 function step(dot, label, headline, sub, extra) {
   return `<div class="step">
@@ -562,6 +704,7 @@ async function refresh() {
   figures(s, cfg, eq);
   reasons(s);
   gate(g);
+  bugs();
   decisionPath(d);
   gauges(rk);
   trades(tr);
