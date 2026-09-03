@@ -1,209 +1,101 @@
-# Demo video script — OptionGenome
+# Demo video script
 
-**≈3:00. Screen recording, voiceover. You never appear on camera.**
+Screen recording of the dashboard with you talking over it. Around three minutes.
 
-Read every line out loud before you record it. If you stumble on a line, or it feels like
-something you'd never say, change the words. Say it the way you'd say it to a friend who
-asked what you'd been building. Getting the wording exactly right matters much less than
-sounding like a person who actually built the thing.
+This is written the way you'd actually say it, so it's a bit rambly on purpose. Don't tidy
+it up. If you'd say a bit differently, say it your way. Don't try to hit the lines exactly —
+just keep the order and cover the points.
 
-Check the dashboard first and say whatever it actually shows.
-
----
-
-## Before you record
-
-- One browser tab. `https://optiongenome.duckdns.org`. Nothing else visible.
-- Hard-refresh so the numbers are current.
-- **Close your terminal.** If `.env` shows up on screen your API keys are in the video forever.
-- 1080p, browser at ~110% zoom.
-- Scroll slowly. Slower than feels right.
+Before you hit record:
+- one browser tab, `https://optiongenome.duckdns.org`, hard refresh so the numbers are fresh
+- close your terminal — if `.env` ends up on screen your API keys are in the video forever
+- read the numbers off the screen, don't use the ones written here if they've changed
 
 ---
 
-## 0:00 — What it is
+**[top of the dashboard]**
 
-*Top of the dashboard.*
+Hey, so this is OptionGenome. It's what I built for the Alpaca hackathon. Basically it's a
+bot that trades options on its own on Alpaca paper trading, and the whole idea behind it is
+that the AI inside it isn't allowed to actually make decisions.
 
-> Okay, so this is OptionGenome. It's a trading bot. It trades options, and it runs on its
-> own — I don't touch it.
->
-> Today it looked at two thousand and twenty-seven possible trades.
+So let me explain what I mean by that. If you look at most of the trading agent projects out
+there, the way they work is you've got an LLM, you give it some market data, you ask it what
+to trade, and it tells you, and then you go and do that. And that works, like, the model will
+give you an answer every single time. But that's kind of the problem. It gives you an answer
+every single time. It never comes back and says "actually nothing looks good right now, don't
+trade." And in trading, not trading is most of the job.
 
-*(beat)*
+So what I did is I flipped it around. The model in OptionGenome can't decide anything. It
+can't see the account balance, it can't see buying power, it doesn't know what the risk rules
+are. All it gets is a short list of trades that my code already built and already checked,
+and it picks the one it likes best. And then there's a completely separate piece of code, I
+call it the risk officer, that re-checks that pick against fifteen rules and can just throw
+it out. And it does. Like today it ran two thousand and something times and it actually
+traded six.
 
-> It took six.
+The trades themselves are pretty boring on purpose. It sells option spreads on SPY, so you
+collect a bit of premium up front and your worst case is a fixed number before you're even
+in the trade. And it manages them itself after that, so exits, adjustments, all of that.
 
----
+**[scroll to the diagram — "How authority flows"]**
 
-## 0:20 — The problem
+Okay so this is how it's wired up. It all goes one direction. MarketDNA is the first thing,
+that figures out what kind of market we're in and whether trading's even allowed right now,
+and that's just math, there's no AI in there at all. Then Roll Desk builds the actual trades.
+The model ranks them. And the risk officer is the last gate before anything hits the broker.
+You can see the model there, the dashed box in the middle. It's inside the pipeline, it's not
+running it.
 
-*Stay where you are. Don't scroll while you're talking.*
+And then all the reads come in through Alpaca's MCP server and all the orders go out through
+the Alpaca CLI. I've actually got a test that walks the source code and fails if anything
+else tries to talk to the broker.
 
-> Here's the thing I kept running into.
->
-> Everyone's building the same bot right now. You feed a language model some market data,
-> and it tells you what to buy. And they're genuinely good at that part. Ask one for a
-> trade, you'll get a trade, with a solid-sounding reason attached.
->
-> The bit nobody really tests is whether it'll ever say no. And it won't. It'll always find
-> you something.
+**[scroll to "The last decision, end to end"]**
 
----
+This is probably the most interesting panel. This is the last decision it made, start to
+finish. So MarketDNA read the market, Roll Desk built three iron condors off the live option
+chain, and the model picked one — and that's its actual reasoning, that's copied straight out
+of the log, I didn't touch it.
 
-## 0:45 — What I did instead
+And then here, this bit, that's everything it wasn't shown. Equity, buying power, the risk
+budget, the rules. None of that. And then the risk officer looked at the pick and rejected
+it, and it tells you why in plain English. So the model made a reasonable argument and it got
+overruled anyway and no order went out. That's basically the whole project in one panel.
 
-> So I built it the other way round. The model in here is the thing I trust least.
->
-> It doesn't pick trades. It gets handed a list the code already built and already checked,
-> and all it does is put them in order. Then the code can just ignore what it picked.
->
-> The trading itself is deliberately boring. It sells option spreads on SPY — you collect a
-> bit of premium up front, and the worst case is a fixed number before you're even in the
-> trade. And it manages them itself after that. Exits, adjustments, all of it.
+**[scroll to "Learning from its own record"]**
 
----
+This one's kind of a self-own. So it tracks the conditions around every trade it closes, the
+delta, the width, what regime it was in, how expensive volatility was, and the idea is it
+works out over time what's actually working. But it's only got four closed trades. And I put
+a threshold on it of a hundred and twenty before it's allowed to conclude anything, because
+if you tune your strategy on four trades you're just tuning it to noise. So it's collecting,
+it's just not acting on it yet, and it tells you that instead of pretending.
 
-## 1:10 — How it works
+**[scroll to "What running it live actually caught"]**
 
-*Scroll to **How authority flows**. Let the diagram sit there. Don't read the boxes out.*
+And this is a list of bugs I only found because it was running live with real orders going
+out. All of these passed the test suite. Like, one of them, the capability discovery matched
+a read tool to an order-placing tool, so reading the order book would have actually placed an
+order. Another one, I had the sign backwards on credit orders, so every fill came in worse
+than the limit I'd set. And the last one is honestly just me. I made it close positions the
+moment a short strike got touched, and that lost four trades in a row. So it's up there with
+what it cost.
 
-> It all flows one way.
->
-> This first part works out what's even allowed right now — that's just maths, there's no
-> model anywhere near it. This builds the actual trades. Model puts them in order. And this
-> last one decides whether any money moves.
+**[scroll to Trades]**
 
-*(beat)*
+And then this is every trade it's done, with the individual legs, so you can see what it
+sold and what it bought underneath as protection. And the P&L. It's down about ninety-six
+dollars on a hundred grand. Six trades in three days, one lot each. It's a loss, I'm not going
+to pretend it isn't, but every dollar of it is in the log and I can tell you exactly where it
+went.
 
-> That's the model, there. Dashed box. It's inside the chain, not sat on top of it.
->
-> Reads come in through Alpaca's MCP server, orders go out through their CLI. Nothing else
-> can talk to the broker at all.
+**[scroll back to the top]**
 
----
-
-## 1:35 — One real decision
-
-*Scroll to **The last decision, end to end**. Slow down here. This is the section that matters.*
-
-> This is a real one from earlier.
->
-> Reads the market. Builds three condors off the live option chain. Model picks one — and
-> that's what it actually said, I'm not paraphrasing it.
-
-*(pause on the quote — two full seconds)*
-
-> Now, that's everything it didn't get.
-
-*(let them read the struck-through line first)*
-
-> No account balance. No buying power. It doesn't know the risk limits, doesn't know any of
-> the rules. It gets a list it didn't write, and it hands back one ID.
->
-> And then the risk officer binned it.
-
-*(beat)*
-
-> It doesn't take any of those numbers on trust — it works all of them out again itself. And
-> it tells you why, in English. Nothing went anywhere near the broker.
->
-> Model made a fair case. Code said no anyway.
+Anyway, that's it. Six hundred and ninety-three tests, everything it does goes into a journal
+it can't go back and edit, and it's still running right now. Thanks.
 
 ---
 
-## 2:10 — It keeps its own record
-
-*Scroll to **Learning from its own record**.*
-
-> It also logs what the market looked like every time it closes something. The delta, the
-> width, the regime, how expensive volatility was going in.
->
-> It's got four. It wants a hundred and twenty before it'll draw any conclusion from that.
->
-> So it doesn't draw one. It just tells you it's got four.
-
-*(beat)*
-
-> You can't tune anything on four trades. You'd only be fitting it to luck.
-
----
-
-## 2:30 — Things that only turned up live
-
-*Scroll to **What running it live actually caught**.*
-
-> These all got through the test suite. Green, the whole way. They only showed up once real
-> orders were going out.
->
-> This one, the capability lookup matched a *read* to an order-*placing* tool. So reading the
-> order book would have put an order in.
->
-> This one, credits were going out with the wrong sign. Everything filled worse than the
-> limit I'd set.
-
-*(beat)*
-
-> And that last one's mine. I told it to close out the second a short got touched. Four
-> trades, lost all four of them. It's up there with what it cost me.
-
----
-
-## 2:50 — The trades, and the number
-
-*Scroll to **Trades**. Leg detail visible.*
-
-> Every trade it's taken, down to each individual order. Red's what it sold. Underneath is
-> what it bought to cap the downside.
->
-> And the number. It's down ninety-six dollars on a hundred grand. Six trades, three days.
-
-*(beat — don't apologise, just keep going)*
-
-> It's a loss. But I can tell you where every dollar of it went.
-
----
-
-## 3:10 — Out
-
-*Scroll back to the top. Let the READY badge sit for a second.*
-
-> Six hundred and ninety-three tests. Every decision it's ever made is in a log file it can't
-> go back and edit.
->
-> And it's still running.
-
-*(two seconds, then stop)*
-
----
-
-## Delivery
-
-**Say it flat.** Don't sell it. The refusal, the struck-through list, the minus ninety-six —
-they all land harder said plainly than pushed. If a line feels like it needs energy behind it,
-it needs to be shorter instead.
-
-**Don't make every sentence a good one.** This is the thing that makes a voiceover sound
-written. Most of what you say should just be plain and functional, so the two or three lines
-that are actually good stand out. If you find yourself landing a clever line every fifteen
-seconds, flatten some of them out.
-
-**Pause where it's marked.** Those are the spots where the viewer needs a second to read the
-screen. Silence is fine.
-
-**Never say:** "as you can see", "let me show you", "what's interesting here is", "this is not
-X, it's Y", "imagine if", "at the end of the day". Those are the giveaways.
-
-**Don't describe what's on screen.** They can see it. Say what it means.
-
-Fluff a line, just stop, breathe, and start that section again. Don't apologise on tape.
-
----
-
-## If you need it shorter
-
-**90 seconds:** *What it is* (0:00) → *The problem* (0:20) → *What I did instead* (0:45) →
-*One real decision* (1:35) → the minus ninety-six line → "still running."
-
-Drop the architecture, the record panel and the bug list. The problem and the refusal are the
-whole argument — everything else is just backing it up.
+If you need it shorter, keep the intro, the decision panel, and the P&L bit at the end. Drop
+the diagram, the learning panel and the bug list.
