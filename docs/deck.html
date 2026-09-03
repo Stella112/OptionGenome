@@ -397,9 +397,34 @@
     .slide { padding-block: 40px 84px; justify-content: flex-start; }
   }
 
+  /* PDF export. 13.333in x 7.5in is the standard 16:9 slide, so the exported
+     deck opens at the same proportions it presents at rather than as letter
+     paper with a slide floating in the middle. */
+  @page { size: 13.333in 7.5in; margin: 0; }
+
   @media print {
-    html, body { height: auto; overflow: visible; }
-    body { background: #fff; color: #14181F; }
+    /* A printing browser reports no colour-scheme preference, so the dark
+       palette is restated here. Without it the exported deck comes out in the
+       light theme while the live one is dark, and the two stop looking like
+       the same product. */
+    :root {
+      --ground: #10141B;
+      --panel: #161B24;
+      --rule: #2A3240;
+      --ink: #E7EAF0;
+      --ink-soft: #A3ACBC;
+      --ink-faint: #6D7686;
+      --brass: #C9A055;
+      --allow: #5FBF92;
+      --deny: #E4735C;
+      --allow-bg: rgba(95, 191, 146, .12);
+      --deny-bg: rgba(228, 115, 92, .12);
+    }
+    html, body { height: auto; overflow: visible; background: var(--ground); }
+    html {
+      -webkit-print-color-adjust: exact;
+      print-color-adjust: exact;
+    }
     .rail, .bar, .hint { display: none !important; }
     .deck { height: auto; }
     .slide {
@@ -407,13 +432,17 @@
       opacity: 1 !important;
       visibility: visible !important;
       transform: none !important;
-      min-height: auto;
+      width: 13.333in;
+      height: 7.5in;
+      overflow: hidden;
+      padding: 0.6in 0.8in;
+      justify-content: center;
+      border-bottom: none;
       page-break-after: always;
       break-after: page;
-      border-bottom: none;
-      padding: 40px 44px;
-      justify-content: flex-start;
+      break-inside: avoid;
     }
+    .slide:last-child { page-break-after: auto; break-after: auto; }
     .card, .term, .stat, .node { box-shadow: none; }
   }
 </style>
