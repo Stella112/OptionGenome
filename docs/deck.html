@@ -85,12 +85,12 @@
     opacity: 0;
     visibility: hidden;
     transform: translateY(8px);
-    transition: opacity .26s ease, transform .26s ease, visibility .26s;
   }
   .slide.is-active {
     opacity: 1;
     visibility: visible;
     transform: none;
+    transition: opacity .2s ease, transform .2s ease;
   }
   @media (prefers-reduced-motion: reduce) {
     .slide { transition: none; transform: none; }
@@ -429,7 +429,7 @@
     <div class="stats">
       <div class="stat"><div class="v" data-live="decisions">133</div><div class="k">decisions logged</div></div>
       <div class="stat"><div class="v" style="color:var(--deny)" data-live="refused">130</div><div class="k">refused</div></div>
-      <div class="stat"><div class="v">648</div><div class="k">tests</div></div>
+      <div class="stat"><div class="v">693</div><div class="k">tests</div></div>
       <div class="stat"><div class="v">72</div><div class="k">MCP tools</div></div>
     </div>
     <p class="foot">Alpaca paper trading &bull; account PA3Y88DE6VC4 &bull; simulated funds, real market data</p>
@@ -570,7 +570,7 @@
     <div class="stats">
       <div class="stat"><div class="v">5,256</div><div class="k">lines of source</div></div>
       <div class="stat"><div class="v">4,435</div><div class="k">lines of tests</div></div>
-      <div class="stat"><div class="v">648</div><div class="k">tests passing</div></div>
+      <div class="stat"><div class="v">693</div><div class="k">tests passing</div></div>
       <div class="stat"><div class="v" data-live="events">685</div><div class="k">journal events</div></div>
     </div>
     <p>A systemd service on a VPS: starts on boot, restarts on failure, reconciles from the broker every pass rather than trusting what it remembers.</p>
