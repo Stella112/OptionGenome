@@ -610,3 +610,89 @@ def test_summary_and_trades_agree_on_realised(tmp_path, monkeypatch):
     from src import api
 
     assert api.api_summary()["pnl_realized"] == pytest.approx(api.api_trades()["realized_total"])
+
+
+# --- 16. the desk refuses to learn from insufficient evidence ---------------
+
+
+def _learning_journal(tmp_path, monkeypatch, n_trades=2):
+    path = tmp_path / "audit.jsonl"
+    rows = [{"ts": "2026-09-01T13:00:00+00:00", "event": "RECONCILE",
+             "equity": 100000.0, "start_of_day_equity": 100000.0}]
+    for i in range(n_trades):
+        exp = f"2026-09-{10 + i:02d}"
+        tid = f"iro-{i}"
+        rows += [
+            {"ts": f"2026-09-01T1{i}:00:00+00:00", "event": "REGIME",
+             "permission": {"regime": "INCOME"},
+             "signals": {"implied_vol": 0.12, "realized_vol": 0.09}},
+            {"ts": f"2026-09-01T1{i}:00:01+00:00", "event": "CANDIDATES",
+             "tickets": [{"candidate_id": tid, "expiry": exp,
+                          "short_delta": 0.22, "width": 5.0}]},
+            {"ts": f"2026-09-01T1{i}:00:02+00:00", "event": "SUBMIT",
+             "intent": "open", "ticket_id": tid},
+            {"ts": f"2026-09-01T1{i}:00:03+00:00", "event": "FILL", "intent": "open",
+             "underlying": "SPY", "expiry": exp, "structure": "iron_condor",
+             "filled_avg_price": -2.00, "filled_qty": 1, "legs": []},
+            {"ts": f"2026-09-02T1{i}:00:00+00:00", "event": "FILL", "intent": "close",
+             "underlying": "SPY", "expiry": exp, "structure": "iron_condor",
+             "filled_avg_price": 1.00, "filled_qty": 1, "legs": []},
+        ]
+    with open(path, "w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+
+def test_a_handful_of_trades_is_declared_inconclusive(tmp_path, monkeypatch):
+    """Fitting a parameter to two outcomes is fitting it to noise."""
+    _learning_journal(tmp_path, monkeypatch, n_trades=2)
+    from src import api
+
+    out = api.api_learning()
+    assert out["closed_trades"] == 2
+    assert out["conclusive"] is False
+    assert out["shortfall"] == out["threshold"] - 2
+
+
+def test_entry_conditions_are_joined_to_outcomes(tmp_path, monkeypatch):
+    """A trade is only informative alongside the market it was opened into."""
+    _learning_journal(tmp_path, monkeypatch, n_trades=2)
+    from src import api
+
+    trade = api.api_learning()["trades"][0]
+    assert trade["short_delta"] == 0.22
+    assert trade["width"] == 5.0
+    assert trade["regime"] == "INCOME"
+    assert trade["iv_rv_ratio"] == pytest.approx(1.333, abs=0.01)
+
+
+def test_buckets_are_marked_inconclusive_individually(tmp_path, monkeypatch):
+    _learning_journal(tmp_path, monkeypatch, n_trades=2)
+    from src import api
+
+    for group in ("by_delta", "by_width", "by_regime"):
+        for bucket in api.api_learning()[group]:
+            assert bucket["conclusive"] is False
+
+
+def test_the_threshold_is_reachable(tmp_path, monkeypatch):
+    """The gate must be able to open, or it is theatre rather than a test."""
+    from src import api
+
+    _learning_journal(tmp_path, monkeypatch, n_trades=1)
+    monkeypatch.setattr(api, "EVIDENCE_THRESHOLD", 1)
+    out = api.api_learning()
+    assert out["conclusive"] is True
+    assert out["shortfall"] == 0
+
+
+def test_learning_never_feeds_back_into_trading():
+    """Nothing in the trading path may import the analysis."""
+    from pathlib import Path
+
+    for module in ("loop.py", "risk/officer.py", "rolldesk/candidates.py",
+                   "marketdna/regime.py", "main.py"):
+        text = Path("src", module).read_text(encoding="utf-8")
+        assert "api_learning" not in text
+        assert "EVIDENCE_THRESHOLD" not in text

@@ -456,6 +456,125 @@ def api_trades() -> Any:
     }
 
 
+#: Closed trades needed in a bucket before its win rate says anything.
+#:
+#: A credit spread wins roughly 70% of the time by construction, so telling a
+#: real edge from that baseline is a proportion test. Detecting a 15-point
+#: improvement at 95% confidence with 80% power needs on the order of 120
+#: outcomes per arm. Anything less is noise wearing a percentage sign.
+EVIDENCE_THRESHOLD = 120
+
+
+def _entry_conditions(entries: list) -> dict[str, dict]:
+    """What the market looked like when each structure was opened.
+
+    Joined by expiry: a SUBMIT names the ticket, the CANDIDATES entry just
+    before it carries that ticket's delta and width, and the REGIME entry before
+    that carries the volatility readings. All three belong to the same pass.
+    """
+    conditions: dict[str, dict] = {}
+    regime: dict = {}
+    shortlist: dict = {}
+
+    for entry in entries:
+        event = entry.get("event")
+        if event == "REGIME":
+            regime = entry
+        elif event == "CANDIDATES":
+            shortlist = entry
+        elif event == "SUBMIT" and entry.get("intent") == "open":
+            ticket_id = entry.get("ticket_id")
+            picked = next(
+                (t for t in (shortlist.get("tickets") or [])
+                 if t.get("candidate_id") == ticket_id),
+                {},
+            )
+            expiry = picked.get("expiry")
+            if not expiry:
+                continue
+            signals = regime.get("signals") or {}
+            iv, rv = signals.get("implied_vol"), signals.get("realized_vol")
+            conditions[expiry] = {
+                "short_delta": picked.get("short_delta"),
+                "width": picked.get("width"),
+                "regime": (regime.get("permission") or {}).get("regime"),
+                "iv_rv_ratio": round(iv / rv, 3) if (iv and rv) else None,
+            }
+    return conditions
+
+
+def _bucket(trades: list, key: str, label) -> list[dict]:
+    groups: dict = {}
+    for t in trades:
+        value = t.get(key)
+        if value is None:
+            continue
+        groups.setdefault(label(value), []).append(t)
+
+    out = []
+    for name, rows in sorted(groups.items()):
+        wins = [r for r in rows if r["realized"] > 0]
+        out.append({
+            "bucket": name,
+            "n": len(rows),
+            "wins": len(wins),
+            "win_rate": round(len(wins) / len(rows), 3) if rows else None,
+            "total": round(sum(r["realized"] for r in rows), 2),
+            "mean": round(sum(r["realized"] for r in rows) / len(rows), 2) if rows else None,
+            "conclusive": len(rows) >= EVIDENCE_THRESHOLD,
+        })
+    return out
+
+
+@app.get("/api/learning")
+def api_learning() -> Any:
+    """What the desk's own record does, and does not, support concluding.
+
+    Deliberately does NOT feed back into trading. With a handful of closed
+    trades, any parameter fitted to this would be fitted to noise -- and a desk
+    whose entire argument is that it refuses to act without evidence would be
+    contradicting itself in its own strategy. It measures, states what it would
+    take to know something, and waits.
+    """
+    entries = _journal().tail(12000)
+    conditions = _entry_conditions(entries)
+
+    closed = [
+        t for t in _pair_fills(entries)
+        if not t["open"] and t["realized"] is not None
+    ]
+    for t in closed:
+        t.update(conditions.get(t["expiry"], {}))
+
+    wins = [t for t in closed if t["realized"] > 0]
+    n = len(closed)
+
+    return {
+        "closed_trades": n,
+        "wins": len(wins),
+        "win_rate": round(len(wins) / n, 3) if n else None,
+        "realized_total": round(sum(t["realized"] for t in closed), 2) if closed else 0.0,
+        "threshold": EVIDENCE_THRESHOLD,
+        "conclusive": n >= EVIDENCE_THRESHOLD,
+        "shortfall": max(0, EVIDENCE_THRESHOLD - n),
+        "by_delta": _bucket(closed, "short_delta",
+                            lambda v: f"{round(float(v), 2):.2f} delta"),
+        "by_width": _bucket(closed, "width", lambda v: f"{float(v):.0f} wide"),
+        "by_regime": _bucket(closed, "regime", lambda v: str(v)),
+        "trades": [
+            {
+                "expiry": t["expiry"],
+                "realized": t["realized"],
+                "short_delta": t.get("short_delta"),
+                "width": t.get("width"),
+                "regime": t.get("regime"),
+                "iv_rv_ratio": t.get("iv_rv_ratio"),
+            }
+            for t in closed
+        ],
+    }
+
+
 @app.get("/api/equity")
 def api_equity(limit: int = 240) -> Any:
     """Reconciled equity over time, for the dashboard sparkline.

@@ -131,6 +131,42 @@
   }
   .arch .cap b { color: var(--ink-soft); font-weight: 600; }
 
+  /* --- evidence: what the record does and does not support -------------- */
+  .verdict-bar {
+    display: flex; gap: 14px; align-items: baseline; flex-wrap: wrap;
+    padding: 16px 17px 14px; border-bottom: 1px solid var(--rule);
+  }
+  .verdict-bar .n { font-family: var(--display); font-size: 34px; line-height: 1; font-variant-numeric: tabular-nums; }
+  .verdict-bar .of { font-family: var(--mono); font-size: 12px; color: var(--ink-faint); }
+  .verdict-bar .stamp {
+    font: 600 10px/1.7 var(--mono); letter-spacing: .12em; text-transform: uppercase;
+    padding: 2px 9px; border-radius: 2px; border: 1px solid currentColor;
+    color: var(--warn); background: rgba(216,163,63,.10);
+  }
+  .verdict-bar .stamp.ok { color: var(--allow); background: var(--allow-soft); }
+  .evidence { padding: 6px 17px 16px; }
+  .evidence .lead {
+    font-family: var(--display); font-size: 15.5px; line-height: 1.5;
+    color: var(--ink); max-width: 74ch; margin: 12px 0 4px;
+  }
+  .ev-group { margin-top: 16px; }
+  .ev-group h4 {
+    margin: 0 0 8px; font: 600 10px/1 var(--mono); letter-spacing: .12em;
+    text-transform: uppercase; color: var(--ink-faint);
+  }
+  .ev-row {
+    display: grid; grid-template-columns: 120px 54px 74px 1fr;
+    gap: 12px; align-items: baseline; padding: 6px 0;
+    font-family: var(--mono); font-size: 12px; border-bottom: 1px solid var(--rule);
+  }
+  .ev-row:last-child { border-bottom: 0; }
+  .ev-row .b { color: var(--ink-soft); }
+  .ev-row .n { color: var(--ink-faint); font-variant-numeric: tabular-nums; }
+  .ev-row .p { font-variant-numeric: tabular-nums; }
+  .ev-row .p.up { color: var(--allow); }
+  .ev-row .p.down { color: var(--deny); }
+  .ev-row .note { color: var(--ink-faint); font-size: 11px; }
+
   /* --- what running it live actually cost ------------------------------- */
   .bugs { padding: 4px 17px 16px; }
   .bug { padding: 14px 0; border-bottom: 1px solid var(--rule); }
@@ -349,6 +385,12 @@
   </section>
 
   <section class="panel" style="margin-top:18px">
+    <h2>Learning from its own record <span class="count">and refusing to, yet</span></h2>
+    <div class="verdict-bar" id="ev-bar"></div>
+    <div class="evidence" id="evidence"></div>
+  </section>
+
+  <section class="panel" style="margin-top:18px">
     <h2>What running it live actually caught <span class="count">tests passed &#183; reality disagreed</span></h2>
     <div class="bugs" id="bugs"></div>
   </section>
@@ -529,6 +571,48 @@ const BUGS = [
     cost: "Four trades, four breach-closes, a 0% win rate. One gave back 41% of its credit when the stop would not have fired until 100%. Reverted.",
   },
 ];
+
+function evidence(e) {
+  if (!e) { $("evidence").innerHTML = `<div class="empty">unavailable</div>`; return; }
+  const conclusive = e.conclusive;
+
+  $("ev-bar").innerHTML = `
+    <span class="n ${conclusive ? "" : ""}">${num(e.closed_trades)}</span>
+    <span class="of">closed trades of the <b>${num(e.threshold)}</b> a conclusion would need</span>
+    <span class="stamp ${conclusive ? "ok" : ""}">${conclusive ? "conclusive" : "not enough evidence"}</span>`;
+
+  const groups = [
+    ["By short delta", e.by_delta],
+    ["By wing width", e.by_width],
+    ["By regime at entry", e.by_regime],
+  ].filter(([, rows]) => (rows || []).length);
+
+  const body = groups.map(([title, rows]) => `
+    <div class="ev-group">
+      <h4>${esc(title)}</h4>
+      ${rows.map(r => `
+        <div class="ev-row">
+          <span class="b">${esc(r.bucket)}</span>
+          <span class="n">n=${r.n}</span>
+          <span class="p ${r.total > 0 ? "up" : r.total < 0 ? "down" : ""}">${signed(r.total)}</span>
+          <span class="note">${r.conclusive
+            ? `${Math.round(r.win_rate * 100)}% won &mdash; enough to act on`
+            : `${Math.round(r.win_rate * 100)}% won &mdash; ${r.n} trade${r.n === 1 ? "" : "s"}, not a result`}</span>
+        </div>`).join("")}
+    </div>`).join("");
+
+  $("evidence").innerHTML = `
+    <p class="lead">The desk records the conditions behind every trade it closes &mdash; short
+    delta, wing width, regime, and how rich implied volatility was against realised. It has
+    <b>${num(e.closed_trades)}</b>. A credit spread wins around 70% of the time by
+    construction, so separating a real edge from that baseline takes roughly
+    <b>${num(e.threshold)}</b> outcomes. ${conclusive
+      ? "That bar is met, and these buckets can be acted on."
+      : `It is <b>${num(e.shortfall)}</b> short. Fitting a parameter to what is here would be
+         fitting it to noise &mdash; and a desk whose whole argument is that it refuses to act
+         without evidence does not get to make an exception for itself.`}</p>
+    ${body}`;
+}
 
 function bugs() {
   $("bugs").innerHTML = BUGS.map(b => `
@@ -725,6 +809,7 @@ async function refresh() {
   figures(s, cfg, eq);
   reasons(s);
   gate(g);
+  evidence(await get("/api/learning"));
   bugs();
   decisionPath(d);
   gauges(rk);
