@@ -556,3 +556,57 @@ def test_unparseable_symbols_are_dropped_not_guessed():
 
     assert describe_legs(["NOT-AN-OCC-SYMBOL"], "iron_condor") == []
     assert describe_legs([], "iron_condor") == []
+
+
+# --- 15. the three P&L figures must reconcile -------------------------------
+
+
+def _pnl_journal(tmp_path, monkeypatch):
+    """One closed trade at -8, one still open, on a 100k account down 95.62."""
+    path = tmp_path / "audit.jsonl"
+    rows = [
+        {"ts": "2026-09-01T13:00:00+00:00", "event": "RECONCILE", "equity": 100000.0,
+         "start_of_day_equity": 100000.0},
+        {"ts": "2026-09-01T18:59:00+00:00", "event": "FILL", "intent": "open",
+         "underlying": "SPY", "expiry": "2026-09-08", "structure": "iron_condor",
+         "filled_avg_price": -0.53, "filled_qty": 1, "legs": []},
+        {"ts": "2026-09-01T19:14:00+00:00", "event": "FILL", "intent": "close",
+         "underlying": "SPY", "expiry": "2026-09-08", "structure": "iron_condor",
+         "filled_avg_price": 0.61, "filled_qty": 1, "legs": []},
+        {"ts": "2026-09-03T18:00:00+00:00", "event": "FILL", "intent": "open",
+         "underlying": "SPY", "expiry": "2026-09-15", "structure": "iron_condor",
+         "filled_avg_price": -2.40, "filled_qty": 1, "legs": []},
+        {"ts": "2026-09-03T20:00:00+00:00", "event": "RECONCILE", "equity": 99904.38,
+         "start_of_day_equity": 100000.0, "open_structures": 1},
+    ]
+    with open(path, "w", encoding="utf-8") as fh:
+        for r in rows:
+            fh.write(json.dumps(r) + "\n")
+    monkeypatch.setenv("OG_JOURNAL", str(path))
+
+
+def test_realised_plus_unrealised_equals_the_total(tmp_path, monkeypatch):
+    """The page showed -95 beside -56 with nothing joining them."""
+    _pnl_journal(tmp_path, monkeypatch)
+    from src import api
+
+    s = api.api_summary()
+    assert s["pnl_total"] == pytest.approx(-95.62)
+    assert s["pnl_realized"] == pytest.approx(-8.0)
+    assert s["pnl_unrealized"] == pytest.approx(-87.62)
+    assert s["pnl_realized"] + s["pnl_unrealized"] == pytest.approx(s["pnl_total"], abs=0.01)
+
+
+def test_only_closed_trades_count_as_realised(tmp_path, monkeypatch):
+    _pnl_journal(tmp_path, monkeypatch)
+    from src import api
+
+    assert api.api_summary()["closed_trades"] == 1
+
+
+def test_summary_and_trades_agree_on_realised(tmp_path, monkeypatch):
+    """Both read the same pairing routine, so they cannot drift apart."""
+    _pnl_journal(tmp_path, monkeypatch)
+    from src import api
+
+    assert api.api_summary()["pnl_realized"] == pytest.approx(api.api_trades()["realized_total"])

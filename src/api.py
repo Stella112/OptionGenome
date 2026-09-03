@@ -164,6 +164,13 @@ def api_summary() -> Any:
     pnl_total = (equity - starting) if (equity is not None and starting) else None
     pnl_today = (equity - start_of_day) if (equity is not None and start_of_day) else None
 
+    # Split the total, or the page shows -95 beside -56 with nothing joining
+    # them. Realised comes from matched fills; the remainder is the mark on
+    # what is still open, plus whatever the broker took in fees.
+    closed_trades = [t for t in _pair_fills(entries) if not t["open"] and t["realized"] is not None]
+    pnl_realized = round(sum(t["realized"] for t in closed_trades), 2) if closed_trades else 0.0
+    pnl_unrealized = round(pnl_total - pnl_realized, 2) if pnl_total is not None else None
+
     return {
         "events": dict(counts),
         "total_events": journal.count(),
@@ -178,6 +185,9 @@ def api_summary() -> Any:
         "pnl_total": pnl_total,
         "pnl_total_pct": (pnl_total / starting) if (starting and pnl_total is not None) else None,
         "pnl_today": pnl_today,
+        "pnl_realized": pnl_realized,
+        "pnl_unrealized": pnl_unrealized,
+        "closed_trades": len(closed_trades),
         "allows": counts.get("ALLOW", 0),
         "denies": counts.get("DENY", 0),
         "fills": len(fills),
@@ -376,24 +386,19 @@ def api_risk() -> Any:
     }
 
 
-@app.get("/api/trades")
-def api_trades() -> Any:
-    """Every structure the desk traded, paired open-to-close.
+def _pair_fills(entries: list) -> list[dict]:
+    """Match opening fills to closing fills, on underlying and expiry.
 
-    Built from FILL entries, so the prices are the broker's own fills rather
-    than the limits the desk asked for. Opens and closes are matched on
-    underlying and expiry, which is what identifies a structure across its life
-    -- the ticket id is content-derived at entry and does not survive the roll
-    into a close.
+    Shared by the trades listing and the summary so the realised figure on the
+    page cannot disagree with the trades it is derived from.
     """
-    fills = [e for e in _journal().tail(6000) if e.get("event") == "FILL"]
+    fills = [e for e in entries if e.get("event") == "FILL"]
 
     books: dict[tuple[str, str], dict] = {}
     for fill in fills:
         key = (str(fill.get("underlying") or ""), str(fill.get("expiry") or ""))
         book = books.setdefault(key, {"opens": [], "closes": []})
-        side = "closes" if fill.get("intent") == "close" else "opens"
-        book[side].append(fill)
+        book["closes" if fill.get("intent") == "close" else "opens"].append(fill)
 
     CONTRACT = 100
     trades = []
@@ -405,13 +410,8 @@ def api_trades() -> Any:
         lots = entry.get("filled_qty") or 1
         exit_ = closes[0] if closes else None
 
-        # Alpaca signs a multi-leg fill price by CASH FLOW: negative means the
-        # account received money. Opening a credit structure therefore fills at
-        # a negative price and closing it at a positive one. Reading those as
-        # plain magnitudes made a 2-dollar loss look like a 241-dollar one.
         credit = _signed_credit(entry.get("filled_avg_price"))
         cost = _signed_debit(exit_.get("filled_avg_price")) if exit_ else None
-
         realized = None
         if credit is not None and cost is not None:
             realized = round((credit - cost) * CONTRACT * lots, 2)
@@ -431,6 +431,20 @@ def api_trades() -> Any:
         })
 
     trades.sort(key=lambda t: t.get("opened_at") or "", reverse=True)
+    return trades
+
+
+@app.get("/api/trades")
+def api_trades() -> Any:
+    """Every structure the desk traded, paired open-to-close.
+
+    Built from FILL entries, so the prices are the broker's own fills rather
+    than the limits the desk asked for. Opens and closes are matched on
+    underlying and expiry, which is what identifies a structure across its life
+    -- the ticket id is content-derived at entry and does not survive the roll
+    into a close.
+    """
+    trades = _pair_fills(_journal().tail(6000))
     closed = [t for t in trades if not t["open"] and t["realized"] is not None]
     wins = [t for t in closed if t["realized"] > 0]
     return {
