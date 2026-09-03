@@ -68,18 +68,32 @@
     -webkit-font-smoothing: antialiased;
   }
 
-  html { scroll-snap-type: y proximity; scroll-behavior: smooth; }
+  html, body { height: 100%; margin: 0; overflow: hidden; }
+
+  .deck { position: relative; height: 100svh; width: 100%; }
 
   .slide {
-    scroll-snap-align: start;
-    min-height: 100svh;
-    padding: clamp(48px, 8vh, 96px) var(--gutter) clamp(56px, 9vh, 104px);
+    position: absolute;
+    inset: 0;
+    padding: clamp(44px, 7vh, 88px) var(--gutter) clamp(76px, 10vh, 108px);
     display: flex;
     flex-direction: column;
     justify-content: center;
     gap: clamp(20px, 3vh, 34px);
-    border-bottom: 1px solid var(--rule);
-    position: relative;
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    opacity: 0;
+    visibility: hidden;
+    transform: translateY(8px);
+    transition: opacity .26s ease, transform .26s ease, visibility .26s;
+  }
+  .slide.is-active {
+    opacity: 1;
+    visibility: visible;
+    transform: none;
+  }
+  @media (prefers-reduced-motion: reduce) {
+    .slide { transition: none; transform: none; }
   }
 
   /* Persistent slide index &mdash; the deck is a sequence, so numbering is real. */
@@ -295,6 +309,76 @@
     letter-spacing: .04em;
   }
 
+  /* Presenter controls */
+  .bar {
+    position: fixed;
+    left: 0; right: 0; bottom: 0;
+    height: clamp(52px, 7vh, 64px);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 16px;
+    padding: 0 var(--gutter);
+    background: linear-gradient(to top, var(--ground) 55%, transparent);
+    z-index: 12;
+    pointer-events: none;
+  }
+  .bar > * { pointer-events: auto; }
+
+  .counter {
+    font-family: var(--mono);
+    font-size: 12px;
+    letter-spacing: .12em;
+    color: var(--ink-faint);
+    font-variant-numeric: tabular-nums;
+  }
+  .counter b { color: var(--ink); font-weight: 500; }
+
+  .controls { display: flex; align-items: center; gap: 8px; }
+  .btn {
+    appearance: none;
+    background: var(--panel);
+    border: 1px solid var(--rule);
+    color: var(--ink-soft);
+    border-radius: 3px;
+    height: 30px;
+    min-width: 32px;
+    padding: 0 9px;
+    font-family: var(--mono);
+    font-size: 12.5px;
+    line-height: 1;
+    cursor: pointer;
+    transition: color .12s, border-color .12s;
+  }
+  .btn:hover:not(:disabled), .btn:focus-visible { color: var(--ink); border-color: var(--ink-faint); }
+  .btn:disabled { opacity: .32; cursor: default; }
+
+  /* Dots double as a jump target, so a judge can reach a slide directly. */
+  .dots { display: flex; gap: 6px; align-items: center; }
+  .dot {
+    appearance: none; border: 0; padding: 0; cursor: pointer;
+    width: 6px; height: 6px; border-radius: 50%;
+    background: var(--rule);
+    transition: background .15s, transform .15s;
+  }
+  .dot:hover { background: var(--ink-faint); }
+  .dot.on { background: var(--brass); transform: scale(1.5); }
+  @media (max-width: 720px) { .dots { display: none; } }
+
+  .hint {
+    position: fixed;
+    left: 50%; bottom: clamp(58px, 7.6vh, 70px);
+    transform: translateX(-50%);
+    font-family: var(--mono);
+    font-size: 11px;
+    letter-spacing: .1em;
+    text-transform: uppercase;
+    color: var(--ink-faint);
+    z-index: 12;
+    transition: opacity .4s ease;
+  }
+  .hint[hidden] { display: block !important; opacity: 0; pointer-events: none; }
+
   /* Progress rail */
   .rail {
     position: fixed;
@@ -310,15 +394,19 @@
     html { scroll-behavior: auto; }
   }
   @media (max-width: 640px) {
-    .slide { min-height: auto; padding-block: 56px; }
-    html { scroll-snap-type: none; }
+    .slide { padding-block: 40px 84px; justify-content: flex-start; }
   }
 
   @media print {
-    html { scroll-snap-type: none; }
+    html, body { height: auto; overflow: visible; }
     body { background: #fff; color: #14181F; }
-    .rail { display: none; }
+    .rail, .bar, .hint { display: none !important; }
+    .deck { height: auto; }
     .slide {
+      position: static;
+      opacity: 1 !important;
+      visibility: visible !important;
+      transform: none !important;
       min-height: auto;
       page-break-after: always;
       break-after: page;
@@ -495,6 +583,18 @@
 
 </div>
 
+<p class="hint" id="hint">Arrow keys or click to advance</p>
+
+<div class="bar">
+  <span class="counter"><b id="at">01</b> / <span id="of">09</span></span>
+  <span class="dots" id="dots"></span>
+  <span class="controls">
+    <button class="btn" id="prev" type="button" aria-label="Previous slide">&larr;</button>
+    <button class="btn" id="next" type="button" aria-label="Next slide">&rarr;</button>
+    <button class="btn" id="full" type="button" aria-label="Toggle fullscreen">Full</button>
+  </span>
+</div>
+
 <script>
   // The deck is served from the same origin as the desk's API, so the counts
   // that change come from the desk itself. Hardcoding them meant a deck
@@ -523,38 +623,105 @@
   })();
 </script>
 <script>
+  // A deck is a sequence of discrete slides, not a scrolling page. Presenting
+  // from a scroll position means a stray trackpad nudge leaves you halfway
+  // between two slides on a projector, so position is an index here and the
+  // document itself never scrolls.
   (function () {
-    var rail = document.getElementById("rail");
     var slides = Array.prototype.slice.call(document.querySelectorAll(".slide"));
-    var reduce = matchMedia("(prefers-reduced-motion: reduce)");
+    if (!slides.length) return;
 
-    function progress() {
-      var doc = document.documentElement;
-      var max = doc.scrollHeight - window.innerHeight;
-      rail.style.width = (max > 0 ? (window.scrollY / max) * 100 : 0) + "%";
-    }
-    window.addEventListener("scroll", progress, { passive: true });
-    window.addEventListener("resize", progress);
-    progress();
+    var rail = document.getElementById("rail");
+    var at = document.getElementById("at");
+    var dotwrap = document.getElementById("dots");
+    var prev = document.getElementById("prev");
+    var next = document.getElementById("next");
+    var full = document.getElementById("full");
+    var hint = document.getElementById("hint");
 
-    // Arrow / space navigation, for presenting from a keyboard. The document
-    // scrolls natively, so wheel and touch already work without any handler.
-    document.addEventListener("keydown", function (e) {
-      var forward = e.key === "ArrowDown" || e.key === "ArrowRight" || e.key === "PageDown" || e.key === " ";
-      var back = e.key === "ArrowUp" || e.key === "ArrowLeft" || e.key === "PageUp";
-      if (!forward && !back) return;
-      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
-      e.preventDefault();
-
-      var top = window.scrollY;
-      var next = null;
-      for (var i = 0; i < slides.length; i++) {
-        var y = slides[i].offsetTop;
-        if (forward && y > top + 8) { next = y; break; }
-        if (back && y < top - 8) { next = y; }
-      }
-      if (next === null) next = forward ? document.documentElement.scrollHeight : 0;
-      window.scrollTo({ top: next, behavior: reduce.matches ? "auto" : "smooth" });
+    document.getElementById("of").textContent = pad(slides.length);
+    var index = 0;
+    var dots = slides.map(function (_, i) {
+      var d = document.createElement("button");
+      d.type = "button";
+      d.className = "dot";
+      d.setAttribute("aria-label", "Slide " + (i + 1));
+      d.addEventListener("click", function () { go(i); });
+      dotwrap.appendChild(d);
+      return d;
     });
+
+    function pad(n) { return n < 10 ? "0" + n : String(n); }
+
+    function go(to, skipHash) {
+      index = Math.max(0, Math.min(slides.length - 1, to));
+      slides.forEach(function (el, i) {
+        el.classList.toggle("is-active", i === index);
+        el.setAttribute("aria-hidden", i === index ? "false" : "true");
+        if (i === index) el.scrollTop = 0;
+      });
+      dots.forEach(function (d, i) { d.classList.toggle("on", i === index); });
+      at.textContent = pad(index + 1);
+      rail.style.width = ((index / (slides.length - 1)) * 100) + "%";
+      prev.disabled = index === 0;
+      next.disabled = index === slides.length - 1;
+      if (index > 0 && hint) hint.hidden = true;
+      // Deep-linkable, so a slide can be sent to someone directly.
+      if (!skipHash) history.replaceState(null, "", "#" + (index + 1));
+    }
+
+    prev.addEventListener("click", function () { go(index - 1); });
+    next.addEventListener("click", function () { go(index + 1); });
+
+    full.addEventListener("click", function () {
+      if (document.fullscreenElement) document.exitFullscreen();
+      else if (document.documentElement.requestFullscreen) document.documentElement.requestFullscreen();
+    });
+
+    document.addEventListener("keydown", function (e) {
+      if (e.target && /^(INPUT|TEXTAREA|SELECT)$/.test(e.target.tagName)) return;
+      var k = e.key;
+      if (k === "ArrowRight" || k === "ArrowDown" || k === "PageDown" || k === " ") { e.preventDefault(); go(index + 1); }
+      else if (k === "ArrowLeft" || k === "ArrowUp" || k === "PageUp") { e.preventDefault(); go(index - 1); }
+      else if (k === "Home") { e.preventDefault(); go(0); }
+      else if (k === "End") { e.preventDefault(); go(slides.length - 1); }
+      else if (k === "f" || k === "F") { full.click(); }
+      else if (/^[1-9]$/.test(k)) { e.preventDefault(); go(Number(k) - 1); }
+    });
+
+    // Click to advance, the way a projector remote behaves -- but not when the
+    // click was aimed at a link or a control.
+    document.addEventListener("click", function (e) {
+      if (e.target.closest("a, button, .bar")) return;
+      go(index + 1);
+    });
+
+    // Wheel and swipe, thresholded so one gesture moves exactly one slide.
+    var locked = false;
+    window.addEventListener("wheel", function (e) {
+      if (Math.abs(e.deltaY) < 24 || locked) return;
+      var slide = slides[index];
+      // Let a tall slide scroll its own overflow before it hands over.
+      if (slide.scrollHeight > slide.clientHeight + 4) {
+        var atTop = slide.scrollTop <= 0;
+        var atEnd = slide.scrollTop + slide.clientHeight >= slide.scrollHeight - 4;
+        if ((e.deltaY > 0 && !atEnd) || (e.deltaY < 0 && !atTop)) return;
+      }
+      locked = true;
+      setTimeout(function () { locked = false; }, 420);
+      go(index + (e.deltaY > 0 ? 1 : -1));
+    }, { passive: true });
+
+    var y0 = null;
+    window.addEventListener("touchstart", function (e) { y0 = e.touches[0].clientY; }, { passive: true });
+    window.addEventListener("touchend", function (e) {
+      if (y0 === null) return;
+      var dy = y0 - e.changedTouches[0].clientY;
+      y0 = null;
+      if (Math.abs(dy) > 60) go(index + (dy > 0 ? 1 : -1));
+    }, { passive: true });
+
+    var deep = parseInt(location.hash.replace("#", ""), 10);
+    go(deep > 0 ? deep - 1 : 0, true);
   })();
 </script>
