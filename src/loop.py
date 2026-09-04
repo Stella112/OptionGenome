@@ -225,11 +225,12 @@ class TradingLoop:
                     orders = payload[key]
                     break
 
-        already = {
-            entry.get("client_order_id")
-            for entry in self.journal.tail(4000)
-            if entry.get("event") == "FILL"
-        }
+        # Scanned once per process, then kept current as fills are written. A
+        # tail() window here re-journalled every fill that had aged out of it.
+        already = getattr(self, "_recorded_fill_ids", None)
+        if already is None:
+            already = self.journal.client_order_ids("FILL")
+            self._recorded_fill_ids = already
 
         written = 0
         for order in orders:

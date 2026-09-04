@@ -184,6 +184,33 @@ class Journal:
         self._counts_cache = counts
         return dict(counts)
 
+    def events(self, event: str) -> list[dict]:
+        """Every entry for one event type, oldest first, across the whole file.
+
+        Trades are derived from FILL entries, and a windowed read produced a
+        different answer per endpoint depending on the window: the summary
+        disagreed with the trades table it was meant to summarise. Fills are
+        rare enough to scan in full, and correctness here outranks the read.
+        """
+        return [entry for entry in self.read() if entry.get("event") == event]
+
+    def client_order_ids(self, event: str) -> set[str]:
+        """Every client_order_id recorded under `event`, across the whole file.
+
+        Deduplication cannot use tail(). The journal outgrows any fixed window,
+        and once an old FILL slides past the end of it the same broker fill is
+        journalled again on the next restart. That silently multiplied the
+        historical fills and made realised P&L depend on how many entries the
+        reading endpoint happened to ask for.
+        """
+        seen: set[str] = set()
+        for entry in self.read():
+            if entry.get("event") == event:
+                coid = entry.get("client_order_id")
+                if coid:
+                    seen.add(str(coid))
+        return seen
+
     def first_equity(self) -> float | None:
         """Equity at the desk's first reconcile: the baseline for total P&L.
 

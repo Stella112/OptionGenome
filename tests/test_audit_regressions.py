@@ -696,3 +696,68 @@ def test_learning_never_feeds_back_into_trading():
         text = Path("src", module).read_text(encoding="utf-8")
         assert "api_learning" not in text
         assert "EVIDENCE_THRESHOLD" not in text
+
+
+# --- fill pairing --------------------------------------------------------------
+#
+# Both of these were live defects. The desk re-journalled fills that had aged
+# out of a tail() dedup window, and the trades view paired opens[0] with
+# closes[0], so a re-entered expiry lost a position that the reconciler could
+# still see. Between them the summary reported +109 realised while the trades
+# table it summarised showed -56.
+
+def _fill(coid, intent, expiry, price, ts):
+    return {
+        "event": "FILL",
+        "client_order_id": coid,
+        "intent": intent,
+        "underlying": "SPY",
+        "expiry": expiry,
+        "structure": "iron_condor",
+        "filled_avg_price": price,
+        "filled_qty": 1,
+        "filled_at": ts,
+        "legs": [],
+    }
+
+
+def test_duplicate_fills_are_counted_once():
+    from src.api import _pair_fills
+
+    one = _fill("a1", "open", "2026-09-18", -0.53, "2026-09-02T21:17:29")
+    two = _fill("a2", "close", "2026-09-18", 0.75, "2026-09-03T15:25:12")
+    trades = _pair_fills([one, two, dict(one), dict(two), dict(one)])
+
+    assert len(trades) == 1
+    assert trades[0]["realized"] == -22.0
+
+
+def test_reentering_an_expiry_yields_two_trades():
+    from src.api import _pair_fills
+
+    trades = _pair_fills([
+        _fill("a1", "open", "2026-09-18", -0.53, "2026-09-02T21:17:29"),
+        _fill("a2", "close", "2026-09-18", 0.75, "2026-09-03T15:25:12"),
+        _fill("a3", "open", "2026-09-18", -2.18, "2026-09-03T15:42:12"),
+    ])
+
+    assert len(trades) == 2
+    closed = [t for t in trades if not t["open"]]
+    still_open = [t for t in trades if t["open"]]
+    assert len(closed) == 1 and closed[0]["realized"] == -22.0
+    assert len(still_open) == 1 and still_open[0]["entry_credit"] == 2.18
+
+
+def test_fills_out_of_order_still_pair_chronologically():
+    from src.api import _pair_fills
+
+    trades = _pair_fills([
+        _fill("a3", "open", "2026-09-18", -2.18, "2026-09-03T15:42:12"),
+        _fill("a2", "close", "2026-09-18", 0.75, "2026-09-03T15:25:12"),
+        _fill("a1", "open", "2026-09-18", -0.53, "2026-09-02T21:17:29"),
+    ])
+
+    closed = [t for t in trades if not t["open"]]
+    assert len(closed) == 1
+    assert closed[0]["entry_credit"] == 0.53
+    assert closed[0]["realized"] == -22.0

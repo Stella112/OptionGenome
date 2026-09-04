@@ -167,7 +167,10 @@ def api_summary() -> Any:
     # Split the total, or the page shows -95 beside -56 with nothing joining
     # them. Realised comes from matched fills; the remainder is the mark on
     # what is still open, plus whatever the broker took in fees.
-    closed_trades = [t for t in _pair_fills(entries) if not t["open"] and t["realized"] is not None]
+    closed_trades = [
+        t for t in _pair_fills(_journal().events("FILL"))
+        if not t["open"] and t["realized"] is not None
+    ]
     pnl_realized = round(sum(t["realized"] for t in closed_trades), 2) if closed_trades else 0.0
     pnl_unrealized = round(pnl_total - pnl_realized, 2) if pnl_total is not None else None
 
@@ -387,36 +390,52 @@ def api_risk() -> Any:
 
 
 def _pair_fills(entries: list) -> list[dict]:
-    """Match opening fills to closing fills, on underlying and expiry.
+    """Match opening fills to closing fills, chronologically, per expiry.
 
-    Shared by the trades listing and the summary so the realised figure on the
-    page cannot disagree with the trades it is derived from.
+    Two things this has to survive.
+
+    Duplicates: a fill that aged out of the writer's dedup window was
+    journalled again, so the same broker fill can appear several times. The
+    client_order_id is the broker's own identity for an order, so the first
+    occurrence wins and the rest are dropped.
+
+    Re-entry: the desk can close an expiry and open it again the same day.
+    Taking opens[0] and closes[0] paired the first open with the first close
+    and then silently discarded the re-entry, which is why a live position was
+    missing from the trades table while the reconciler still counted it. Fills
+    are walked in time order instead, each close settling the oldest open still
+    outstanding, so one expiry yields as many round trips as actually happened
+    plus whatever is still on.
     """
-    fills = [e for e in entries if e.get("event") == "FILL"]
+    seen: set[str] = set()
+    fills = []
+    for entry in entries:
+        if entry.get("event") != "FILL":
+            continue
+        coid = entry.get("client_order_id")
+        if coid:
+            if coid in seen:
+                continue
+            seen.add(str(coid))
+        fills.append(entry)
 
-    books: dict[tuple[str, str], dict] = {}
+    fills.sort(key=lambda f: str(f.get("filled_at") or f.get("ts") or ""))
+
+    books: dict[tuple[str, str], list] = {}
     for fill in fills:
         key = (str(fill.get("underlying") or ""), str(fill.get("expiry") or ""))
-        book = books.setdefault(key, {"opens": [], "closes": []})
-        book["closes" if fill.get("intent") == "close" else "opens"].append(fill)
+        books.setdefault(key, []).append(fill)
 
     CONTRACT = 100
-    trades = []
-    for (underlying, expiry), book in books.items():
-        opens, closes = book["opens"], book["closes"]
-        if not opens:
-            continue
-        entry = opens[0]
-        lots = entry.get("filled_qty") or 1
-        exit_ = closes[0] if closes else None
 
+    def build(underlying: str, expiry: str, entry: dict, exit_: dict | None) -> dict:
+        lots = entry.get("filled_qty") or 1
         credit = _signed_credit(entry.get("filled_avg_price"))
         cost = _signed_debit(exit_.get("filled_avg_price")) if exit_ else None
         realized = None
         if credit is not None and cost is not None:
             realized = round((credit - cost) * CONTRACT * lots, 2)
-
-        trades.append({
+        return {
             "underlying": underlying,
             "expiry": expiry,
             "structure": entry.get("structure"),
@@ -428,7 +447,21 @@ def _pair_fills(entries: list) -> list[dict]:
             "realized": realized,
             "open": exit_ is None,
             "legs": describe_legs(entry.get("legs") or [], entry.get("structure")),
-        })
+        }
+
+    trades = []
+    for (underlying, expiry), sequence in books.items():
+        outstanding: list[dict] = []
+        for fill in sequence:
+            if fill.get("intent") == "close":
+                if outstanding:
+                    trades.append(build(underlying, expiry, outstanding.pop(0), fill))
+                # A close with no open ahead of it means the opening fill is
+                # older than the window being read. Nothing to pair it to.
+            else:
+                outstanding.append(fill)
+        for entry in outstanding:
+            trades.append(build(underlying, expiry, entry, None))
 
     trades.sort(key=lambda t: t.get("opened_at") or "", reverse=True)
     return trades
@@ -444,7 +477,7 @@ def api_trades() -> Any:
     -- the ticket id is content-derived at entry and does not survive the roll
     into a close.
     """
-    trades = _pair_fills(_journal().tail(6000))
+    trades = _pair_fills(_journal().events("FILL"))
     closed = [t for t in trades if not t["open"] and t["realized"] is not None]
     wins = [t for t in closed if t["realized"] > 0]
     return {
@@ -540,7 +573,7 @@ def api_learning() -> Any:
     conditions = _entry_conditions(entries)
 
     closed = [
-        t for t in _pair_fills(entries)
+        t for t in _pair_fills(_journal().events("FILL"))
         if not t["open"] and t["realized"] is not None
     ]
     for t in closed:
