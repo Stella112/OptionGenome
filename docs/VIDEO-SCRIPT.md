@@ -1,55 +1,48 @@
 # Demo video script
 
-Screen recording of the dashboard, you talking over it. About two and a half minutes.
+Under three minutes. Screen recording of the dashboard, you talking.
 
-Say it your way. Keep the order, cover the points, don't try to hit the lines word for word.
-
-Before you record:
-- one browser tab, `https://optiongenome.duckdns.org`, hard refresh
-- close your terminal — if `.env` ends up on screen your API keys are in the video forever
-- read the numbers off the screen, not the ones written here
+Before you record: one tab open at https://optiongenome.duckdns.org, terminal closed,
+say the numbers you see on screen.
 
 ---
 
-**[top of the dashboard]**
+**[top of dashboard]**
 
-Hey, this is OptionGenome. It's a bot that trades options on its own on Alpaca paper
-trading, and the whole idea is that the AI inside it isn't allowed to make decisions.
+Hi, this is OptionGenome. It's a trading bot that trades options by itself on Alpaca.
 
-Most trading agents work the same way. You give a language model market data, ask it what
-to trade, and it tells you. And it always tells you. It never says "nothing looks good,
-don't trade." In trading, not trading is most of the job.
+Here's the problem it solves. Most AI trading bots let the AI decide what to trade. But AI
+always says yes. Ask it for a trade and it will give you one, every time, even when it
+shouldn't. In trading, that's how you lose money.
 
-So I flipped it. The model here can't see the account balance, can't see buying power,
-doesn't know the risk rules. It gets a short list of trades my code already built, picks
-one, and then a separate piece of code, the risk officer, re-checks that pick against
-fifteen rules and can throw it out. Today it ran two thousand times and traded six.
+So in OptionGenome the AI is not in charge. The code is.
+
+Here's how it works. Step one, the code checks the market and decides if trading is even
+allowed right now. Step two, the code builds a few safe trades, where the most you can lose
+is fixed up front. Step three, the AI picks the one it likes best. Step four, a risk checker
+goes through that pick with fifteen rules, and if anything fails, the trade is blocked.
+
+Today it looked at over two thousand trades and only took six. That's the point.
 
 **[scroll to the diagram]**
 
-This is how it's wired. MarketDNA works out what's allowed right now, that's just math.
-Roll Desk builds the trades. The model ranks them. The risk officer is the last gate. You
-can see the model there, the dashed box. It's inside the pipeline, it's not running it.
+This is the flow. Market check, build trades, AI picks, risk check, then the broker. The AI
+is the dashed box in the middle. It can't see the account balance, can't see the rules, and
+can't place an order. It only picks from a list the code gives it.
 
-Reads come through Alpaca's MCP server, orders go out through the Alpaca CLI, and a test
-fails the build if anything else touches the broker.
+**[scroll to "The last decision"]**
 
-**[scroll to "The last decision, end to end"]**
-
-This is a real decision, start to finish. Three iron condors off the live chain, the model
-picked one, and that's its actual reasoning from the log.
-
-This bit here is everything it wasn't shown. Equity, buying power, the rules. And then the
-risk officer rejected the pick and says why in plain English. Model made a reasonable case,
-got overruled, no order went out. That's the whole project in one panel.
+Here's a real example. The code built three trades. The AI picked one, and this is its
+reason, straight from the log. Then the risk checker said no, and here's why. So no trade
+happened. The AI was overruled by the code. That's the whole system in one screen.
 
 **[scroll to Trades]**
 
-Every trade with the individual legs, what it sold and what it bought as protection. And
-the P&L. Down about ninety-six dollars on a hundred grand, six trades in three days. It's a
-loss, but every dollar of it is in the log and I can tell you exactly where it went.
+These are all the trades it's made, with every buy and sell. And the profit and loss. It's
+down about ninety-six dollars on a hundred thousand. Small loss, six trades, and every
+dollar is logged so you can see exactly what happened.
 
-**[scroll back to top]**
+**[scroll to top]**
 
-Six hundred and ninety-three tests, everything goes into a journal it can't edit, and it's
-still running right now. Thanks.
+It's been running on its own for three days with no crashes. Six hundred and ninety-three
+tests. Every decision is written down. That's OptionGenome. Thanks.
