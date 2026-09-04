@@ -1,0 +1,57 @@
+﻿<!doctype html>
+<html><head><meta charset="utf-8">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Newsreader:ital,opsz,wght@0,6..72,400;1,6..72,300&family=Archivo:wght@400;500&family=IBM+Plex+Mono:wght@400;600&display=swap">
+<style>
+  html,body{margin:0;width:1920px;height:1080px;overflow:hidden}
+  body{
+    background:#10141B;color:#E7EAF0;
+    font-family:"Archivo",system-ui,sans-serif;
+    position:relative;
+  }
+  /* faint ledger grid */
+  body::before{
+    content:"";position:absolute;inset:0;
+    background-image:linear-gradient(#1A2029 1px,transparent 1px),linear-gradient(90deg,#1A2029 1px,transparent 1px);
+    background-size:96px 96px;opacity:.55;
+  }
+  .wrap{position:relative;padding:112px 140px;height:100%;box-sizing:border-box;display:flex;flex-direction:column;justify-content:space-between}
+  .eyebrow{font-family:"IBM Plex Mono",monospace;font-size:22px;letter-spacing:.18em;text-transform:uppercase;color:#C9A055;display:flex;align-items:center;gap:22px}
+  .eyebrow::after{content:"";height:1px;width:220px;background:#C9A055;opacity:.4}
+  h1{font-family:"Newsreader",Georgia,serif;font-weight:400;font-size:196px;line-height:.92;letter-spacing:-.025em;margin:28px 0 0}
+  .tag{font-family:"Newsreader",Georgia,serif;font-weight:300;font-size:52px;line-height:1.25;color:#A3ACBC;margin-top:34px;max-width:1500px}
+  .tag em{color:#E7EAF0;font-style:italic;white-space:nowrap}
+  .flow{display:flex;align-items:center;gap:0;margin-top:56px;font-family:"IBM Plex Mono",monospace;font-size:24px;letter-spacing:.06em}
+  .node{padding:22px 34px;border:1px solid #2A3240;background:#161B24;border-radius:4px;color:#E7EAF0}
+  .node.model{border:1px dashed #C9A055;color:#C9A055;background:transparent}
+  .node.gate{border-color:#E4735C;color:#E4735C}
+  .arrow{width:56px;height:1px;background:#3A4454;position:relative}
+  .arrow::after{content:"";position:absolute;right:-1px;top:-5px;border:5px solid transparent;border-left:8px solid #3A4454}
+  .stats{display:flex;gap:0;border-top:1px solid #2A3240;padding-top:40px}
+  .stat{flex:1;border-left:1px solid #2A3240;padding:0 44px}
+  .stat:first-child{border-left:0;padding-left:0}
+  .stat b{display:block;font-family:"IBM Plex Mono",monospace;font-weight:600;font-size:72px;line-height:1;color:#E7EAF0}
+  .stat b.deny{color:#E4735C}
+  .stat span{display:block;margin-top:14px;font-family:"IBM Plex Mono",monospace;font-size:19px;letter-spacing:.14em;text-transform:uppercase;color:#6D7686}
+</style></head><body>
+<div class="wrap">
+  <div>
+    <div class="eyebrow">Alpaca AI Trading Agents Hackathon</div>
+    <h1>OptionGenome</h1>
+    <div class="tag">An autonomous options desk where the AI is the <em>least-trusted</em> component.</div>
+    <div class="flow">
+      <div class="node">MARKET CHECK</div><div class="arrow"></div>
+      <div class="node">BUILD TRADES</div><div class="arrow"></div>
+      <div class="node model">AI PICKS ONE</div><div class="arrow"></div>
+      <div class="node gate">RISK OFFICER</div><div class="arrow"></div>
+      <div class="node">ALPACA</div>
+    </div>
+  </div>
+  <div class="stats">
+    <div class="stat"><b>2,412</b><span>Decisions judged</span></div>
+    <div class="stat"><b class="deny">2,406</b><span>Refused</span></div>
+    <div class="stat"><b>6</b><span>Trades taken</span></div>
+    <div class="stat"><b>693</b><span>Tests passing</span></div>
+  </div>
+</div>
+</body></html>
+
